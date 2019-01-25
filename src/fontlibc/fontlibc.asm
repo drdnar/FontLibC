@@ -34,6 +34,16 @@ arg5 := 18
 arg6 := 21
 
 ;-------------------------------------------------------------------------------
+fontStruct.version := 0
+fontStruct.Height := fontStruct.version + 1
+fontStruct.totalGlyphs := fontStruct.Height + 1
+fontStruct.firstGlyph := fontStruct.totalGlyphs + 1
+fontStruct.widthsTablePtr := fontStruct.firstGlyph + 1
+fontStruct.bitmapsTablePtr := fontStruct.widthsTablePtr + 3
+fontStruct.italicSpaceAdjust := fontStruct.bitmapsTablePtr + 3
+fontStruct.spaceAbove := fontStruct.italicSpaceAdjust + 1
+fontStruct.spaceBelow := fontStruct.spaceAbove + 1
+fontStruct.fontPropertiesSize := fontStruct.bitmapsTablePtr + 3
 
 ;-------------------------------------------------------------------------------
 macro mIsHLLessThanDE?
@@ -254,6 +264,51 @@ fontlib_GetCursorPosition:
 
 
 ;-------------------------------------------------------------------------------
+fontlib_GetCursorX:
+; Gets the cursor column
+; Arguments:
+;  - None
+; Returns:
+;  - Column
+	ld	hl, (_TextX)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetCursorY:
+; Gets the cursor row
+; Arguments:
+;  - None
+; Returns:
+;  - Row
+	ld	a, (_TextY)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_ShiftCursorPosition:
+; Shifts the cursor position by a given delta
+; Arguments:
+;  - arg0: delta X
+;  - arg1: delta Y
+; Returns:
+;  - Nothing
+	pop	bc
+	pop	hl
+	pop	de
+	push	de
+	push	hl
+	push	bc
+	ld	bc, (_TextX)
+	add	hl, bc
+	ld	(_TextX), hl
+	ld	a, (_TextY)
+	add	a, d
+	ld	(_TextY), a
+	ret
+
+
+;-------------------------------------------------------------------------------
 ; Data
 _TextXMin:
 	dl	0
@@ -273,8 +328,27 @@ _TextX:
 _TextY:
 	dl	0
 _TextForeColor:
-	dl	255
+	db	255
 _TextBackColor:
-	dl	0
+	db	0
 _TextTransparentMode:
+	db	0
+_CurrentFontProperties:
+.version:
+	db	0
+.height:
+	db	0
+.totalGlyphs:
+	db	0
+.firstGlyph:
+	db	0
+.widthsTablePtr:
+	dl	0
+.bitmapsTablePtr:
+	dl	0
+.italicSpaceAdjust:
+	db	0
+.spaceAbove:
+	db	0
+.spaceBelow:
 	db	0
