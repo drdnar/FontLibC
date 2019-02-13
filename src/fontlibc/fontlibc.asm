@@ -15,7 +15,13 @@ library 'FONTLIBC', 1
 	export fontlib_SetWindowFullScreen
 	export fontlib_GetWindow
 	export fontlib_SetCursorPosition
-	export fontlib_GetCursorPosition
+	export fontlib_GetCursorX
+	export fontlib_GetCursorY
+	export fontlib_ShiftCursorPosition
+	export fontlib_SetFont
+	export fontlib_DrawGlyph
+	export fontlib_DrawString
+
 
 ;-------------------------------------------------------------------------------
 LcdSize            := LcdWidth*LcdHeight
@@ -234,36 +240,6 @@ fontlib_SetCursorPosition:
 
 
 ;-------------------------------------------------------------------------------
-fontlib_GetCursorPosition:
-; Gets the cursor position for text drawing
-; Arguments:
-;  - arg0: X target variable
-;  - arg1: Y target variable
-; Returns:
-;  - Writes to X and Y
-	ld	hl, arg0
-	add	hl, sp
-	ld	de, (hl)
-	ex	de, hl
-	ld	bc, 0
-	adc	hl, bc
-	jr	z, .skipX
-	ld	bc, (_TextX)
-	ld	(hl), bc
-.skipX:
-	ex	de, hl
-	ld	bc, 3
-	add	hl, bc
-	ld	c, 0
-	ld	hl, (hl)
-	adc	hl, bc
-	ret	z
-	ld	a, (_TextY)
-	ld	(hl), a
-	ret
-
-
-;-------------------------------------------------------------------------------
 fontlib_GetCursorX:
 ; Gets the cursor column
 ; Arguments:
@@ -307,6 +283,263 @@ fontlib_ShiftCursorPosition:
 	ld	(_TextY), a
 	ret
 
+	
+;-------------------------------------------------------------------------------
+fontlib_SetFont:
+; Sets the current font to the data at the pointer given
+; Arguments:
+;  - arg0: Pointer to font
+;  - arg1: Load flags
+; Returns:
+;  - Nothing
+;  - Nothing
+	ld	hl, arg0
+	add	hl, sp
+	ld	hl, (hl)
+	push	hl
+	ld	de, _CurrentFontProperties
+	ld	bc, fontStruct.fontPropertiesSize
+	ldir
+	pop	de
+	ld	iy, _CurrentFontProperties
+	ld	hl, (iy + fontStruct.widthsTablePtr)
+	add	hl, de
+	ld	(iy + fontStruct.widthsTablePtr), hl
+	ld	hl, (iy + fontStruct.bitmapsTablePtr)
+	add	hl, de
+	ld	(iy + fontStruct.bitmapsTablePtr), hl
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_DrawGlyph:
+; Shifts the cursor position by a given delta
+; Arguments:
+;  - arg0: delta X
+;  - arg1: delta Y
+; Returns:
+;  - Nothing
+	pop	de
+	pop	hl
+	push	hl
+	push	de
+	ld	a, l
+_DrawGlyph:
+	ld	hl, (_TextY)
+	ld	h, LcdWidth / 2
+	mlt	hl
+	add	hl, hl
+	ld	de, (_TextX)
+	push	de
+	add	hl, de
+	ld	de, (mpLcdLpbase)
+	add	hl, de
+	call	_DrawGlyphRaw
+	lea	de, iy + 0
+	pop	hl
+	add	hl, de
+	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
+	or	a
+	ret	z
+	ld	e, a
+	sbc	hl, de
+	ld	(_TextX), hl
+	ret
+_DrawGlyphRaw:
+; Handles the actual main work of drawing a glyph.
+; Inputs:
+;  - HL: Draw pointer
+;  - A: Glyph index
+;  - Font properties variables
+; Outputs:
+;  - IYL: Width of glyph (not including any italicSpaceAdjust)
+;  - IYH: Zero
+;  - IYU: Untouched
+;  - Glyph drawn
+; Destroys:
+;  - Basically everything except shadow and configuration registers.
+;    And don't count on that not changing.
+	push	hl
+	; Get glyph width and update loop controls
+	ld	c, a
+	or	a
+	sbc	hl, hl
+	ld	l, a
+	ld	de, (_CurrentFontProperties.widthsTablePtr)
+	add	hl, de
+	ld	a, (hl)
+	ld	iyl, a
+	rra
+	rra
+	rra
+	inc	a
+	ld	(_TextStraightBytesPerRow), a
+	ld	a, 320 and 255
+	sub	iyl
+	ld	(_TextStraightRowDelta), a
+	; Get pointer to bitmap
+	ld	hl, (_CurrentFontProperties.bitmapsTablePtr)
+	ld	b, 3
+	mlt	bc
+	add	hl, bc
+	ld	ix, (hl)
+	sbc	hl, bc
+	ex	de, hl
+	add	ix, de
+	lea	ix, ix - fontStruct.bitmapsTablePtr
+	pop	hl
+	; Now deal with the spaceAbove metric
+	ld	a, (_TextTransparentMode)
+	ld	c, a
+	ld	a, (_CurrentFontProperties.spaceAbove)
+	or	a
+	jr	z, .noSpaceAbove
+	bit	0, c
+	jr	z, .transparentSpaceAbove
+	; Deal with clearing out pixels
+	ld	iyh, a
+	ld	a, iyl
+	ld	c, a
+	ld	a, (_TextStraightBackgroundColor)
+	ld	de, (_TextStraightRowDelta - 2)
+.clearSpaceAboveLoop:
+	ld	b, c
+.clearSpaceAboveInnerLoop:
+	ld	(hl), a
+	inc	hl
+	djnz	.clearSpaceAboveInnerLoop
+	add	hl, de
+	dec	iyh
+	jr	nz, .clearSpaceAboveLoop
+	ld	a, (_TextTransparentMode)
+	ld	c, a
+	jr	.noSpaceAbove
+.transparentSpaceAbove:
+	; Typical values for spaceAbove should be one to three.
+	; So we're just going to be lazy and not bother with proper multiplication.
+	ld	b, a
+	ld	de, 320
+.transparentSpaceAboveLoop:
+	add	hl, de
+	djnz	.transparentSpaceAboveLoop
+.noSpaceAbove: 
+	ld	a, (_CurrentFontProperties.height)
+	ld	iyh, a
+	ex	de, hl
+; Registers:
+;  - B: Bit counter for each row
+;  - C: Transparent flag
+;  - IYL: Glyph data width
+;  - IYH: Row counter
+;  - IX: Read pointer
+;  - DE: Write pointer
+;  - HL: Current line bitmap
+; This is split into three loops: one for set pixels, on for unset pixels that
+; are transparent, and one for unset pixels that are opaque.
+; The idea is that pixels are not randomly black or white; rather, there tend
+; to be horizontal lines in text, giving straight runs of pixels the same color.
+; Thus, we can optimize for that case.
+.rowLoop:
+	ld	hl, (ix)
+	lea	ix, ix + 0		; SMCd to have correct byte count per row
+smcByte _TextStraightBytesPerRow
+	ld	b, iyl
+.columnLoopStart:
+	ld	a, (_TextStraightForegroundColor)
+	; For set pixels
+.setColumnLoop:
+	add	hl, hl
+	jr	nc, .unsetColumnLoopStart
+.setColumnLoopMiddle:
+	ld	(de), a
+	inc	de
+	djnz	.setColumnLoop
+	jr	.columnLoopEnd
+.setColumnLoopStart:
+	ld	a, 0			; SMCd to have correct foreground color
+smcByte _TextStraightForegroundColor
+	jr	.setColumnLoopMiddle
+	; For unset pixels, we use a special loop if transparency is requested
+.unsetColumnLoopStart:
+	ld	a, 0			; SMCd to have correct background color
+smcByte _TextStraightBackgroundColor
+	bit	0, c
+	jr	z, .unsetColumnLoopMiddle
+	inc	de
+.unsetColumnLoopTransparent:
+	add	hl, hl
+	jr	c, .setColumnLoopStart
+	inc	de
+	djnz	.unsetColumnLoopTransparent
+	jr	.columnLoopEnd
+	; For unset pixels with opacity on
+.unsetColumnLoop:
+	add	hl, hl
+	jr	c, .setColumnLoopStart
+.unsetColumnLoopMiddle:
+	ld	(de), a
+	inc	de
+	djnz	.unsetColumnLoop
+.columnLoopEnd:
+	ex	de, hl
+	ld	de, LcdWidth - 0	; SMCd to have correct row delta
+smcByte _TextStraightRowDelta
+	add	hl, de
+	ex	de, hl
+	dec	iyh
+	jr	nz, .rowLoop
+; OK done with the main work!
+	ex	de, hl
+	; Now deal with the spaceBelow metric
+	ld	a, (_CurrentFontProperties.spaceBelow)
+	or	a
+	ret	z
+	bit	0, c
+	ret	z
+	; Deal with clearing out pixels
+	ld	iyh, a
+	ld	c, iyl
+	ld	a, (_TextStraightBackgroundColor)
+	ld	de, (_TextStraightRowDelta - 2)
+.clearSpaceBelowLoop:
+	ld	b, c
+.clearSpaceBelowInnerLoop:
+	ld	(hl), a
+	inc	hl
+	djnz	.clearSpaceBelowInnerLoop
+	add	hl, de
+	dec	iyh
+	jr	nz, .clearSpaceBelowLoop
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_DrawString:
+;_DrawString:
+;	ex	de, hl
+;	; Compute target address
+;	ld	hl, (_TextY)
+;	ld	h, LcdWidth / 2
+;	mlt	hl
+;	add	hl, hl
+;	ld	bc, (_TextX)
+;	push	bc
+;	add	hl, bc
+;	ld	bc, (mpLcdLpbase)
+;	add	hl, bc
+;.byteLoop:
+;	ld	a, (de)
+;	inc	de
+;	push	de
+;	push	hl
+;	call	_DrawGlyphRaw
+;	lea	de, iy + 0
+;	add	hl, de
+;	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
+;	ld	e, a
+;	sbc	hl, de
+;	ld	(_TextX), hl
+	
 
 ;-------------------------------------------------------------------------------
 ; Data
