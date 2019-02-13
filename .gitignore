@@ -1,3 +1,7 @@
 *.8xv
 *.lib
+*.src
+*.8xp
+*.map
+*.bin
 src/include

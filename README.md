@@ -19,7 +19,6 @@ together and tagging with metadata.
 * SetWindowFullScreen
 * GetWindow
 * SetCursorPosition
-* GetCursorPosition
 * GetCursorX
 * GetCursorY
 * ShiftCursorPosition
@@ -34,21 +33,13 @@ together and tagging with metadata.
 * NewLine
 * ClearEOL
 * DrawGlyph
-* DrawGlyphUpsideDown
-* DrawGlyph90CW
-* DrawGlyph90CCW
 * DrawGlyphTransparent
-* DrawGlyphTransparentUpsideDown
-* DrawGlyphTransparent90CW
-* DrawGlyphTransparent90CCW
 * DrawText
-* DrawTextUpsideDown
-* DrawText90CW
-* DrawText90CCW
 * GetGlyphWidth
 * GetStringWidth
 * SetCurrentFont
 * GetCurrentFont
+* GetGlyphWidthInFont(raw_font*, char glyph)
 
 
 Data:
