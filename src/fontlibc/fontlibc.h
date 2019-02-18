@@ -51,7 +51,8 @@ typedef struct {
 	 * This is an OFFSET from the fontVersion member in data format.
 	 * However, it is 24-bits long because it becomes a real pointer upon loading. */
 	intptr_t widths_table;
-	/* Offset to a table of pointers to glyph bitmaps. */
+	/* Offset to a table of offsets to glyph bitmaps.
+	 * These offsets are only 16-bits each to save some space. */
 	intptr_t bitmaps;
 	/* Specifies how much to move the cursor left after each glyph.
 	   Total movement is width - overhang.  Intended for italics. */
@@ -135,6 +136,19 @@ uint8_t fontlib_GetCursorY();
  * @param y y-shift
  */
 void fontlib_ShiftCursorPosition(int x, uint8_t y);
+
+/**
+ * Sets the current font
+ * @param font_data Pointer to font data
+ * @param flags Information about how to process the font (unused)
+ */
+void fontlib_SetFont(uint8_t* font_data, int flags);
+
+/**
+ * Draws a glyph
+ * @param glyph Codepoint
+ */
+void fontlib_DrawGlyph(uint8_t glyph);
 
 
 

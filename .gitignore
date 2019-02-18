@@ -4,4 +4,5 @@
 *.8xp
 *.map
 *.bin
+*.dbg
 src/include

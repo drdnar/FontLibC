@@ -21,6 +21,7 @@ library 'FONTLIBC', 1
 	export fontlib_SetFont
 	export fontlib_DrawGlyph
 	export fontlib_DrawString
+	; NEED SET COLORS FUNCTIONS
 
 
 ;-------------------------------------------------------------------------------
@@ -184,6 +185,7 @@ fontlib_GetWindow:
 ;  - arg3: Pointer to height
 ; Returns:
 ;  - Data in pointers to args
+	push	ix
 	ld	ix, _TextXMin - 3	; Just to maintain consistency
 	ld	iy, 0
 	add	iy, sp
@@ -214,6 +216,7 @@ fontlib_GetWindow:
 	ex	de, hl
 	ld	(hl), a
 .skipHeight:
+	pop	ix
 	ld	de, (iy + arg1)
 	sbc	hl, hl
 	adc	hl, de
@@ -292,10 +295,10 @@ fontlib_SetFont:
 ;  - arg1: Load flags
 ; Returns:
 ;  - Nothing
-;  - Nothing
 	ld	hl, arg0
 	add	hl, sp
 	ld	hl, (hl)
+	ld	(_CurrentFontRoot), hl
 	push	hl
 	ld	de, _CurrentFontProperties
 	ld	bc, fontStruct.fontPropertiesSize
@@ -313,18 +316,19 @@ fontlib_SetFont:
 
 ;-------------------------------------------------------------------------------
 fontlib_DrawGlyph:
-; Shifts the cursor position by a given delta
+; Draws a glyph to the current cursor position
 ; Arguments:
-;  - arg0: delta X
-;  - arg1: delta Y
+;  - arg0: codepoint
 ; Returns:
 ;  - Nothing
 	pop	de
 	pop	hl
 	push	hl
 	push	de
+	push	ix	; _DrawGlyphRaw destroys IX
 	ld	a, l
-_DrawGlyph:
+DrawGlyph:
+	; Compute write pointer
 	ld	hl, (_TextY)
 	ld	h, LcdWidth / 2
 	mlt	hl
@@ -334,18 +338,20 @@ _DrawGlyph:
 	add	hl, de
 	ld	de, (mpLcdLpbase)
 	add	hl, de
-	call	_DrawGlyphRaw
-	lea	de, iy + 0
+	call	DrawGlyphRaw
+	lea.sis	de, iy + 0
+	; Update _TextX
 	pop	hl
 	add	hl, de
 	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
+	pop	ix
 	or	a
 	ret	z
 	ld	e, a
 	sbc	hl, de
 	ld	(_TextX), hl
 	ret
-_DrawGlyphRaw:
+DrawGlyphRaw:
 ; Handles the actual main work of drawing a glyph.
 ; Inputs:
 ;  - HL: Draw pointer
@@ -370,23 +376,22 @@ _DrawGlyphRaw:
 	ld	a, (hl)
 	ld	iyl, a
 	rra
-	rra
-	rra
+	srl	a
+	srl	a
 	inc	a
 	ld	(_TextStraightBytesPerRow), a
 	ld	a, 320 and 255
 	sub	iyl
-	ld	(_TextStraightRowDelta), a
+	ld	(_TextStraightRowDelta - 2), a
 	; Get pointer to bitmap
 	ld	hl, (_CurrentFontProperties.bitmapsTablePtr)
-	ld	b, 3
-	mlt	bc
+	ld	b, 2
+	mlt	bc	; Performs both the multiply and zeros BCU
 	add	hl, bc
 	ld	ix, (hl)
-	sbc	hl, bc
-	ex	de, hl
+	lea.sis	ix, ix + 0	; Truncate to 16-bits
+	ld	de, (_CurrentFontRoot)
 	add	ix, de
-	lea	ix, ix - fontStruct.bitmapsTablePtr
 	pop	hl
 	; Now deal with the spaceAbove metric
 	ld	a, (_TextTransparentMode)
@@ -395,7 +400,7 @@ _DrawGlyphRaw:
 	or	a
 	jr	z, .noSpaceAbove
 	bit	0, c
-	jr	z, .transparentSpaceAbove
+	jr	nz, .transparentSpaceAbove
 	; Deal with clearing out pixels
 	ld	iyh, a
 	ld	a, iyl
@@ -415,13 +420,13 @@ _DrawGlyphRaw:
 	ld	c, a
 	jr	.noSpaceAbove
 .transparentSpaceAbove:
-	; Typical values for spaceAbove should be one to three.
-	; So we're just going to be lazy and not bother with proper multiplication.
-	ld	b, a
-	ld	de, 320
-.transparentSpaceAboveLoop:
+	ld	e, a
+	ld	d, LcdWidth / 2
+	mlt	de
+	ex	de, hl
+	add	hl, hl
+	ex	de, hl
 	add	hl, de
-	djnz	.transparentSpaceAboveLoop
 .noSpaceAbove: 
 	ld	a, (_CurrentFontProperties.height)
 	ld	iyh, a
@@ -456,7 +461,7 @@ smcByte _TextStraightBytesPerRow
 	djnz	.setColumnLoop
 	jr	.columnLoopEnd
 .setColumnLoopStart:
-	ld	a, 0			; SMCd to have correct foreground color
+	ld	a, 255			; SMCd to have correct foreground color
 smcByte _TextStraightForegroundColor
 	jr	.setColumnLoopMiddle
 	; For unset pixels, we use a special loop if transparency is requested
@@ -495,7 +500,7 @@ smcByte _TextStraightRowDelta
 	or	a
 	ret	z
 	bit	0, c
-	ret	z
+	ret	nz
 	; Deal with clearing out pixels
 	ld	iyh, a
 	ld	c, iyl
@@ -566,6 +571,8 @@ _TextBackColor:
 	db	0
 _TextTransparentMode:
 	db	0
+_CurrentFontRoot:
+	dl	0
 _CurrentFontProperties:
 .version:
 	db	0
@@ -585,3 +592,4 @@ _CurrentFontProperties:
 	db	0
 .spaceBelow:
 	db	0
+;
