@@ -122,12 +122,12 @@ void fontlib_SetCursorPosition(int x, uint8_t y);
 /**
  * Returns the cursor column.
  */
-int fontlib_GetCursorX();
+int fontlib_GetCursorX(void);
 
 /**
  * Returns the cursor row.
  */
-uint8_t fontlib_GetCursorY();
+uint8_t fontlib_GetCursorY(void);
 
 /**
  * Adds the given (x,y) to the cursor position.
@@ -149,6 +149,96 @@ void fontlib_SetFont(uint8_t* font_data, int flags);
  * @param glyph Codepoint
  */
 void fontlib_DrawGlyph(uint8_t glyph);
+
+/**
+ * Draws a string
+ * @param str Pointer to string
+ */
+void fontlib_DrawGlyph(char* str);
+
+/**
+ * Sets the current foreground color FontLibC will use for drawing.
+ * This is NOT the same as GraphX's current color!
+ * @param color New color to use
+ */
+void fontlib_SetForegroundColor(uint8_t color);
+
+/**
+ * Sets the current background color FontLibC will use for drawing.
+ * This is NOT the same as GraphX's current color!
+ * @param color New color to use
+ */
+void fontlib_SetBackgroundColor(uint8_t color);
+
+/**
+ * Sets the current colors FontLibC will use for drawing.
+ * These are NOT the same as GraphX's current colors!
+ * @param forecolor New foreground color to use
+ * @param backcolor New background color to use
+ */
+void fontlib_SetColors(uint8_t forecolor, uint8_t backcolor);
+
+/**
+ * Returns the current foreground color FontLibC will use for drawing.
+ * This is NOT the same as GraphX's current color!
+ * @return Current foreground color
+ */
+uint8_t fontlib_GetForegroundColor(void);
+
+/**
+ * Returns the current background color FontLibC will use for drawing.
+ * This is NOT the same as GraphX's current color!
+ * @return Current background color
+ */
+uint8_t fontlib_GetBackgroundColor(void);
+
+/**
+ * Controls whether FontLibC will use a transparent background for text drawing
+ * instead of the currently configured background color.
+ * This has nothing to do with GraphX's configured transparent color
+ * @param transparency true to make background transparent, false to use background color
+ */
+void fontlib_SetTransparency(bool transparency);
+
+/**
+ * Returns whether FontLibC will use a transparent background for text drawing
+ * instead of the currently configured background color.
+ * This has nothing to do with GraphX's configured transparent color
+ * @return true if background will be transparent, false if background color will be used
+ */
+bool fontlib_GetTransparency(void);
+
+/**
+ * Controls hows much black space will be added above and below each line of
+ * text.  If transparency is set, then the padding will not be overwritten with
+ * the background color, but padding will still be added.  Padding space is
+ * added at the time each glyph is drawn.
+ * @param space_above Blank space padding to add above
+ * @param space_below Blank space padding to add below
+ */
+void fontlib_SetLineSpacing(uint8_t space_above, uint8_t space_below);
+
+/**
+ * Returns current padding space above.
+ * @return Current padding space above
+ */
+uint8_t fontlib_GetSpaceAbove(void);
+
+/**
+ * Sets current spacing adjustment for italic text.  This causes the cursor to
+ * be moved back a certain number of pixels after every glyph is drawn.  This
+ * is only useful if transparency mode is set.
+ * @param italic_spacing_adjustment Pixels to move cursor backward after each glyph
+ */
+void fontlib_SetItalicSpacingAdjustment(uint8_t italic_spacing_adjustment);
+
+
+/**
+ * Returns current padding space below.
+ * @return Current padding space below
+ */
+uint8_t fontlib_GetItalicSpacingAdjustment(void);
+
 
 
 

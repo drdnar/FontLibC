@@ -21,7 +21,19 @@ library 'FONTLIBC', 1
 	export fontlib_SetFont
 	export fontlib_DrawGlyph
 	export fontlib_DrawString
-	; NEED SET COLORS FUNCTIONS
+	export fontlib_SetForegroundColor
+	export fontlib_SetBackgroundColor
+	export fontlib_SetColors
+	export fontlib_GetForegroundColor
+	export fontlib_GetBackgroundColor
+	export fontlib_SetTransparency
+	export fontlib_GetTransparency
+	export fontlib_SetLineSpacing
+	export fontlib_GetSpaceAbove
+	export fontlib_GetSpaceBelow
+	export fontlib_SetItalicSpacingAdjustment
+	export fontlib_GetItalicSpacingAdjustment
+	
 
 
 ;-------------------------------------------------------------------------------
@@ -544,7 +556,177 @@ fontlib_DrawString:
 ;	ld	e, a
 ;	sbc	hl, de
 ;	ld	(_TextX), hl
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetForegroundColor:
+; Sets the foreground color
+; Arguments:
+;  - arg0: Color
+; Returns:
+;  - Nothing
+	; One byte  smaller, a lot slower
+;	pop	de
+;	pop	hl
+;	push	hl
+;	push	de
+;	ld	a, l
+;	ld	(_TextStraightForegroundColor), a
+;	ret
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	(_TextStraightForegroundColor), a
+	ret
 	
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetBackgroundColor:
+; Sets the background color
+; Arguments:
+;  - arg0: Color
+; Returns:
+;  - Nothing
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	(_TextStraightBackgroundColor), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetColors:
+; Sets both foreground and background color
+; Arguments:
+;  - arg0: Foreground color
+;  - arg1: Background color
+; Returns:
+;  - Nothing
+	ld	iy, 0
+	add	iy, sp
+	ld	a, (iy + arg0)
+	ld	(_TextStraightForegroundColor), a
+	ld	a, (iy + arg1)
+	ld	(_TextStraightBackgroundColor), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetForegroundColor:
+; Gets the foreground color
+; Arguments:
+;  - None
+; Returns:
+;  - Current color
+	ld	a, (_TextStraightForegroundColor)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetBackgroundColor:
+; Gets the background color
+; Arguments:
+;  - None
+; Returns:
+;  - Current color
+	ld	a, (_TextStraightBackgroundColor)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetTransparency:
+; Controls whether transparent background mode is used
+; Arguments:
+;  - arg0: Non-zero for transparent mode, zero for opaque
+; Returns:
+;  - Nothing
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	add	a, 255	; Set carry if A > 0
+	sbc	a, a	; Set all bits to value of carry
+	ld	(_TextTransparentMode), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetTransparency:
+; Returns whether transparent background mode is being used
+; Arguments:
+;  - None
+; Returns:
+;  - 1 if transparent, 0 if opaque
+	ld	a, (_TextTransparentMode)
+	and	1
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetLineSpacing:
+; Sets line spacing
+; Arguments:
+;  - arg0: Space above
+;  - arg1: Space below
+; Returns:
+;  - Nothing
+	ld	iy, 0
+	add	iy, sp
+	ld	a, (iy + arg0)
+	ld	(_CurrentFontProperties.spaceAbove), a
+	ld	a, (iy + arg1)
+	ld	(_CurrentFontProperties.spaceBelow), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetSpaceAbove:
+; Returns current padding space above
+; Arguments:
+;  - None
+; Returns:
+;  - Padding space above
+	ld	a, (_CurrentFontProperties.spaceAbove)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetSpaceBelow:
+; Returns current padding space below
+; Arguments:
+;  - None
+; Returns:
+;  - Padding space below
+	ld	a, (_CurrentFontProperties.spaceBelow)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetItalicSpacingAdjustment:
+; Sets current spacing adjustment for italic text.  This causes the cursor to be
+; moved back a certain number of pixels after every glyph is drawn.  This is
+; only useful if transparency mode is set.
+; Arguments:
+;  - arg0: Pixels to move cursor backward after each glyph
+; Returns:
+;  - Nothing
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	(_CurrentFontProperties.italicSpaceAdjust), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetItalicSpacingAdjustment:
+; Returns current spacing adjustment for italic text
+; Arguments:
+;  - None
+; Returns:
+;  - Spacing adjustment value
+	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
+	ret
+
 
 ;-------------------------------------------------------------------------------
 ; Data
@@ -565,10 +747,10 @@ _TextX:
 	dl	0
 _TextY:
 	dl	0
-_TextForeColor:
-	db	255
-_TextBackColor:
-	db	0
+;_TextForeColor:
+;	db	255
+;_TextBackColor:
+;	db	0
 _TextTransparentMode:
 	db	0
 _CurrentFontRoot:
