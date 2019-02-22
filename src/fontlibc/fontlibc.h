@@ -234,8 +234,8 @@ void fontlib_SetItalicSpacingAdjustment(uint8_t italic_spacing_adjustment);
 
 
 /**
- * Returns current padding space below.
- * @return Current padding space below
+ * Returns current spacing adjustment for italic text.
+ * @return Current spacing adjustment for italic text
  */
 uint8_t fontlib_GetItalicSpacingAdjustment(void);
 
