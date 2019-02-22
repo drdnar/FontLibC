@@ -19,8 +19,6 @@ library 'FONTLIBC', 1
 	export fontlib_GetCursorY
 	export fontlib_ShiftCursorPosition
 	export fontlib_SetFont
-	export fontlib_DrawGlyph
-	export fontlib_DrawString
 	export fontlib_SetForegroundColor
 	export fontlib_SetBackgroundColor
 	export fontlib_SetColors
@@ -33,6 +31,13 @@ library 'FONTLIBC', 1
 	export fontlib_GetSpaceBelow
 	export fontlib_SetItalicSpacingAdjustment
 	export fontlib_GetItalicSpacingAdjustment
+	export fontlib_GetCurrentFontHeight
+	export fontlib_ValidateCodepoint
+	export fontlib_GetGlyphWidth
+	export fontlib_GetStringWidth
+	export fontlib_GetLastCharacterRead
+	export fontlib_DrawGlyph
+	export fontlib_DrawString
 	
 
 
@@ -44,6 +49,7 @@ TRASPARENT_COLOR   := 0
 TEXT_FG_COLOR      := 0
 TEXT_BG_COLOR      := 255
 TEXT_TP_COLOR      := 255
+arg00 := 0
 arg0 := 3
 arg1 := 6
 arg2 := 9
@@ -51,11 +57,12 @@ arg3 := 12
 arg4 := 15
 arg5 := 18
 arg6 := 21
+chFirstPrintingCode	equ	16
 
 ;-------------------------------------------------------------------------------
 fontStruct.version := 0
-fontStruct.Height := fontStruct.version + 1
-fontStruct.totalGlyphs := fontStruct.Height + 1
+fontStruct.height := fontStruct.version + 1
+fontStruct.totalGlyphs := fontStruct.height + 1
 fontStruct.firstGlyph := fontStruct.totalGlyphs + 1
 fontStruct.widthsTablePtr := fontStruct.firstGlyph + 1
 fontStruct.bitmapsTablePtr := fontStruct.widthsTablePtr + 3
@@ -333,13 +340,12 @@ fontlib_DrawGlyph:
 ;  - arg0: codepoint
 ; Returns:
 ;  - Nothing
-	pop	de
-	pop	hl
-	push	hl
-	push	de
-	push	ix	; _DrawGlyphRaw destroys IX
-	ld	a, l
+	; Read arg0
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
 DrawGlyph:
+	push	ix	; _DrawGlyphRaw destroys IX
 	; Compute write pointer
 	ld	hl, (_TextY)
 	ld	h, LcdWidth / 2
@@ -350,15 +356,16 @@ DrawGlyph:
 	add	hl, de
 	ld	de, (mpLcdLpbase)
 	add	hl, de
+	; Draw glyph
 	call	DrawGlyphRaw
-	lea.sis	de, iy + 0
 	; Update _TextX
+	lea.sis	de, iy + 0
 	pop	hl
 	add	hl, de
 	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
 	pop	ix
-	or	a
-	ret	z
+;	or	a
+;	ret	z
 	ld	e, a
 	sbc	hl, de
 	ld	(_TextX), hl
@@ -378,6 +385,9 @@ DrawGlyphRaw:
 ;  - Basically everything except shadow and configuration registers.
 ;    And don't count on that not changing.
 	push	hl
+	; Subtract out firstGlyph
+	ld	hl, _CurrentFontProperties.firstGlyph
+	sub	(hl)
 	; Get glyph width and update loop controls
 	ld	c, a
 	or	a
@@ -532,6 +542,11 @@ smcByte _TextStraightRowDelta
 
 ;-------------------------------------------------------------------------------
 fontlib_DrawString:
+;  - Compute target address
+;  - For each glyph:
+;     - Check if glyph is control code
+;     - Check if drawing glyph will extend past right side of window
+;     - 
 ;_DrawString:
 ;	ex	de, hl
 ;	; Compute target address
@@ -729,7 +744,191 @@ fontlib_GetItalicSpacingAdjustment:
 
 
 ;-------------------------------------------------------------------------------
+fontlib_GetCurrentFontHeight:
+; Returns the height of the current font
+; Arguments:
+;  - None
+; Returns:
+;  - Height
+	ld	a, (_CurrentFontProperties.height)
+	ld	hl, _CurrentFontProperties.spaceAbove
+	add	a, (hl)
+	inc	hl
+	add	a, (hl)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_ValidateCodepoint:
+; Returns true if the given codepoint is present in the current font.
+; Arguments:
+;  - arg0: Glyph index
+; Returns:
+;  - true (1) if present, false (0) if not
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	hl, _CurrentFontProperties.firstGlyph
+	sub	(hl)
+	ccf
+	jr	c, .invalidIndex
+	ld	hl, _CurrentFontProperties.totalGlyphs
+	sub	(hl)
+.invalidIndex:
+	sbc	a, a
+	and	1
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetGlyphWidth:
+; Returns the width of a given glyph.
+; Arguments:
+;  - arg0: Codepoint
+; Returns:
+;  - Width of glyph
+;    Zero if invalid index
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+GetGlyphWidth:
+; Internal-use version
+; Input:
+;  - A: Codepoint
+; Output:
+;  - A: Width
+;  - C if invalid codepoint, NC if valid
+; Destroys:
+;  - DE
+;  - HL
+	; Subtract out firstGlyph
+	ld	hl, _CurrentFontProperties.firstGlyph
+	sub	(hl)
+	; Validate that the glyph index is actually valid
+	jr	nc, .checkMaxIndex
+.invalidIndex:
+	xor	a
+	scf
+	ret
+.checkMaxIndex:
+	ld	hl, _CurrentFontProperties.totalGlyphs
+	cp	(hl)
+	jr	c, .invalidIndex
+	; Look up width
+	or	a
+	sbc	hl, hl
+	ld	l, a
+	ld	de, (_CurrentFontProperties.widthsTablePtr)
+	add	hl, de
+	ld	a, (hl)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetStringWidth:
+; Returns the width of a string.
+; Stops when it encounters any control code or a codepoint not in the current
+; font.
+; Arguments:
+;  - arg0: Pointer to string
+; Returns:
+;  - Width of string
+	ld	hl, arg0
+	add	hl, sp
+	ld	iy, (hl)
+	sbc	hl, hl	; C reset from above ADD
+	push	ix
+	ld	ix, 0
+	ld	de, (_CurrentFontProperties.widthsTablePtr)
+	ld	a, (_CurrentFontProperties.firstGlyph)
+	ld	b, a
+	ld	a, (_CurrentFontProperties.widthsTablePtr)
+	ld	c, a
+.loop:
+	ld	a, (iy)
+	cp	chFirstPrintingCode
+	jr	c, .exit
+	sub	b
+	jr	c, .exit
+	cp	c
+	jr	nc, .exit
+	inc	iy
+	ld	l, a
+	add	hl, de
+	ld	a, (hl)
+	ld	hl, _CurrentFontProperties.italicSpaceAdjust
+	sub	(hl)
+	sbc	hl, hl
+	ld	l, a
+	ex	de, hl
+	add	ix, de
+	ex	de, hl
+	sbc	hl, hl
+	jr	.loop
+.exit:
+	ld	(_TextLastCharacterRead), iy
+	lea	hl, ix + 0
+	pop	ix
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetLastCharacterRead:
+; font.
+; Arguments:
+;  - None
+; Returns:
+;  - 
+	ld	hl, (_TextLastCharacterRead)
+	ret
+
+
+;-------------------------------------------------------------------------------
+CCallback:
+; Internal routine for calling a callback written in C.
+; Detects if the callback is NULL, and returns NC if so.
+; Inputs:
+;  - HL: Pointer to pointer to callback
+;        That is, if you have:
+;        callback:
+;        	dl	locationOfCRoutine
+;        then you would invoke this like
+;		push	arg1
+;		push	arg0
+;        	ld	hl, callback
+;		call	CCallback
+;		jr	nz, callbackWasTaken
+; Output:
+;  - NC if callback was NULL, C if callback was taken
+; Destroys:
+;  - Everything a C routine can destory
+	ld	de, (hl)
+	or	a
+	sbc	hl, hl
+	sbc	hl, de
+	ret	nc
+;	pop	hl
+;	ld	(.returnAddress + 1), hl
+;	ld	hl, .retpoint
+;	push	hl
+	ld	hl, .retpoint
+	ex	(sp), hl
+	ld	(.returnAddress + 1), hl
+	ex	de, hl
+	jp	(hl)
+.retpoint:
+	scf
+.returnAddress:
+	jp	0
+
+
+;-------------------------------------------------------------------------------
 ; Data
+_TextDefaultWindow:
+	dl	0
+	dl	0
+	dl	LcdWidth
+	dl	LcdHeight
 _TextXMin:
 	dl	0
 _TextYMin:
@@ -737,11 +936,6 @@ _TextYMin:
 _TextXMax:
 	dl	LcdWidth
 _TextYMax:
-	dl	LcdHeight
-_TextDefaultWindow:
-	dl	0
-	dl	0
-	dl	LcdWidth
 	dl	LcdHeight
 _TextX:
 	dl	0
@@ -753,6 +947,10 @@ _TextY:
 ;	db	0
 _TextTransparentMode:
 	db	0
+_TextLastCharacterRead:
+	dl	0
+_ControlCodeCallback:
+	dl	0
 _CurrentFontRoot:
 	dl	0
 _CurrentFontProperties:

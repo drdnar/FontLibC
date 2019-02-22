@@ -145,18 +145,6 @@ void fontlib_ShiftCursorPosition(int x, uint8_t y);
 void fontlib_SetFont(uint8_t* font_data, int flags);
 
 /**
- * Draws a glyph
- * @param glyph Codepoint
- */
-void fontlib_DrawGlyph(uint8_t glyph);
-
-/**
- * Draws a string
- * @param str Pointer to string
- */
-void fontlib_DrawGlyph(char* str);
-
-/**
  * Sets the current foreground color FontLibC will use for drawing.
  * This is NOT the same as GraphX's current color!
  * @param color New color to use
@@ -232,14 +220,59 @@ uint8_t fontlib_GetSpaceAbove(void);
  */
 void fontlib_SetItalicSpacingAdjustment(uint8_t italic_spacing_adjustment);
 
-
 /**
  * Returns current spacing adjustment for italic text.
  * @return Current spacing adjustment for italic text
  */
 uint8_t fontlib_GetItalicSpacingAdjustment(void);
 
+/**
+ * Returns the height of the current font
+ * @return Height in pixels
+ */
+uint8_t fontlib_GetCurrentFontHeight(void);
 
+/**
+ * Tests whether the current font has the given codepoint
+ * @param codepoint Codepoint to test
+ * @return true if codepoint is in current font, false if not
+ */
+bool fontlib_ValidateCodepoint(char codepoint);
+
+/**
+ * Returns the width of the given glyph
+ * @param codepoint Codepoint to test
+ * @return Width of glyph, 0 if invalid codepoint
+ */
+uint8_t fontlib_GetGlyphWidth(char codepoint);
+
+/**
+ * Returns the width of a string printed in the current font.
+ * Stops processing when it encounters any control code or a codepoint not in
+ * the current font.
+ * @param str Pointer to string
+ * @return Width of string
+ */
+uint24_t fontlib_GetStringWidth(char* str);
+
+/**
+ * Gets the location of the last character processed by GetStringWidth or 
+ * DrawString
+ * @return Pointer to character
+ */
+char* fontlib_GetLastCharacterRead(void);
+
+/**
+ * Draws a glyph
+ * @param glyph Codepoint
+ */
+void fontlib_DrawGlyph(uint8_t glyph);
+
+/**
+ * Draws a string
+ * @param str Pointer to string
+ */
+void fontlib_DrawGlyph(char* str);
 
 
 #ifdef __cplusplus
