@@ -396,6 +396,7 @@ DrawGlyphRaw:
 	ld	de, (_CurrentFontProperties.widthsTablePtr)
 	add	hl, de
 	ld	a, (hl)
+DrawGlyphRawKnownWidth:
 	ld	iyl, a
 	rra
 	srl	a
@@ -412,44 +413,16 @@ DrawGlyphRaw:
 	add	hl, bc
 	ld	ix, (hl)
 	lea.sis	ix, ix + 0	; Truncate to 16-bits
-	ld	de, (_CurrentFontRoot)
-	add	ix, de
+	ld	bc, (_CurrentFontRoot)
+	add	ix, bc
 	pop	hl
 	; Now deal with the spaceAbove metric
 	ld	a, (_TextTransparentMode)
 	ld	c, a
 	ld	a, (_CurrentFontProperties.spaceAbove)
-	or	a
-	jr	z, .noSpaceAbove
-	bit	0, c
-	jr	nz, .transparentSpaceAbove
-	; Deal with clearing out pixels
-	ld	iyh, a
-	ld	a, iyl
-	ld	c, a
-	ld	a, (_TextStraightBackgroundColor)
-	ld	de, (_TextStraightRowDelta - 2)
-.clearSpaceAboveLoop:
-	ld	b, c
-.clearSpaceAboveInnerLoop:
-	ld	(hl), a
-	inc	hl
-	djnz	.clearSpaceAboveInnerLoop
-	add	hl, de
-	dec	iyh
-	jr	nz, .clearSpaceAboveLoop
+	call	DrawEmptyLines
 	ld	a, (_TextTransparentMode)
 	ld	c, a
-	jr	.noSpaceAbove
-.transparentSpaceAbove:
-	ld	e, a
-	ld	d, LcdWidth / 2
-	mlt	de
-	ex	de, hl
-	add	hl, hl
-	ex	de, hl
-	add	hl, de
-.noSpaceAbove: 
 	ld	a, (_CurrentFontProperties.height)
 	ld	iyh, a
 	ex	de, hl
@@ -516,27 +489,50 @@ smcByte _TextStraightRowDelta
 	dec	iyh
 	jr	nz, .rowLoop
 ; OK done with the main work!
-	ex	de, hl
 	; Now deal with the spaceBelow metric
 	ld	a, (_CurrentFontProperties.spaceBelow)
+	ex	de, hl
+DrawEmptyLines:
+; Internal routine that draws empty space for a glyph
+; Inputs:
+;  - A: Number of lines to draw
+;  - C: Transparent flag
+;  - IYL: Width of line to draw
+;  - HL: Drawing target
+;  - (_TextStraightRowDelta - 2): Row delta
+; Output:
+;  - Lines drawn
+; Destroys:
+;  - AF
+;  - BC
+;  - DE
+;  - IYH
 	or	a
 	ret	z
 	bit	0, c
-	ret	nz
+	jr	nz, .transparentLines
 	; Deal with clearing out pixels
 	ld	iyh, a
-	ld	c, iyl
 	ld	a, (_TextStraightBackgroundColor)
 	ld	de, (_TextStraightRowDelta - 2)
-.clearSpaceBelowLoop:
+	ld	c, iyl
+.clearLinesLoop:
 	ld	b, c
-.clearSpaceBelowInnerLoop:
+.clearLinesInnerLoop:
 	ld	(hl), a
 	inc	hl
-	djnz	.clearSpaceBelowInnerLoop
+	djnz	.clearLinesInnerLoop
 	add	hl, de
 	dec	iyh
-	jr	nz, .clearSpaceBelowLoop
+	jr	nz, .clearLinesLoop
+	ret
+.transparentLines:
+	ld	e, a
+	ld	d, LcdWidth / 2
+	mlt	de
+	ex	de, hl
+	add	hl, hl
+	add	hl, de
 	ret
 
 
@@ -547,6 +543,33 @@ fontlib_DrawString:
 ;     - Check if glyph is control code
 ;     - Check if drawing glyph will extend past right side of window
 ;     - 
+	push	ix
+	; Read arg0
+	ld	hl, arg0
+	add	hl, sp
+	ld	ix, (hl)
+	
+;	; Compute target drawing address
+	ld	hl, (_TextY)
+	ld	h, LcdWidth / 2
+	mlt	hl
+	add	hl, hl
+	ld	bc, (_TextX)
+	push	bc
+	add	hl, bc
+	ld	bc, (mpLcdLpbase)
+	add	hl, bc
+
+
+	ld	a, (ix)
+	cp	chFirstPrintingCode
+	jr	c, .exit
+
+	
+	
+.exit:
+	pop	ix
+	ret
 ;_DrawString:
 ;	ex	de, hl
 ;	; Compute target address
@@ -866,6 +889,10 @@ fontlib_GetStringWidth:
 	sbc	hl, hl
 	jr	.loop
 .exit:
+	ex	de, hl
+	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
+	ld	e, a
+	add	ix, de
 	ld	(_TextLastCharacterRead), iy
 	lea	hl, ix + 0
 	pop	ix

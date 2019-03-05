@@ -17,8 +17,8 @@ extern "C" {
 typedef enum {
 	/* clear = sans-serif font */
 	SERIF = 0x01,
-	ITALIC = 0x02,
-	OBLIQUE = 0x04,
+	OBLIQUE = 0x02,
+	ITALIC = 0x04,
 	/* Chances are you're not using this library for monospaced fonts.
 	 * But if you are, you'll still have to provide a widths table where
 	 * every byte is the same. */
@@ -213,6 +213,12 @@ void fontlib_SetLineSpacing(uint8_t space_above, uint8_t space_below);
 uint8_t fontlib_GetSpaceAbove(void);
 
 /**
+ * Returns current padding space below
+ * @return Current padding space below
+ */
+uint8_t fontlib_GetSpaceBelow(void);
+
+/**
  * Sets current spacing adjustment for italic text.  This causes the cursor to
  * be moved back a certain number of pixels after every glyph is drawn.  This
  * is only useful if transparency mode is set.
@@ -227,7 +233,7 @@ void fontlib_SetItalicSpacingAdjustment(uint8_t italic_spacing_adjustment);
 uint8_t fontlib_GetItalicSpacingAdjustment(void);
 
 /**
- * Returns the height of the current font
+ * Returns the height of the current font, INCLUDING space above/below
  * @return Height in pixels
  */
 uint8_t fontlib_GetCurrentFontHeight(void);
@@ -272,7 +278,7 @@ void fontlib_DrawGlyph(uint8_t glyph);
  * Draws a string
  * @param str Pointer to string
  */
-void fontlib_DrawGlyph(char* str);
+void fontlib_DrawString(char* str);
 
 
 #ifdef __cplusplus
