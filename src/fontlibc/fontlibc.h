@@ -374,7 +374,7 @@ void fontlib_DrawString(char* str);
  * @param max_characters Maximum number of characters to attempt to print, may
  * return early if some other condition requires returning
  */
-void fontlib_DrawStringL(char* str, int max_characters);
+void fontlib_DrawStringL(char* str, int24_t max_characters);
 
 
 #ifdef __cplusplus

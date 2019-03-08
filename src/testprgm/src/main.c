@@ -12,7 +12,7 @@
 #include <graphx.h>
 
 #include <fileioc.h>
-#include "..\fontlibc\fontlibc.h"
+#include "fontlibc.h"
 
 uint8_t test_font[] = {
 	#include "testfont.inc"
