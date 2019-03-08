@@ -35,7 +35,7 @@ void main(void) {
     fontlib_SetLineSpacing(2,4);
     
     fontlib_SetFont(test_font, 0);
-    fontlib_DrawGlyph('s');
+    fontlib_DrawGlyph('*');
     fontlib_DrawString("Hello, World!\nThe quick brown fox jumps over the lazy dog. Jack Dawes loves my big sphinx of quartz. ");
     
     /* Pause */
