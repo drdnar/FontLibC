@@ -27,13 +27,16 @@ void main(void) {
     
 /*    while (!os_GetCSC()); */
     
-    fontlib_SetWindow(1, 1, 10, 10);
+    fontlib_SetWindow(1, 1, 300, 40);
     fontlib_GetWindow(&xmin, &ymin, NULL, NULL);
     fontlib_SetCursorPosition(2, 2);
+    fontlib_SetForegroundColor(0xC0);
+    fontlib_SetBackgroundColor(0x40);
+    fontlib_SetLineSpacing(2,4);
     
     fontlib_SetFont(test_font, 0);
-    
-    fontlib_DrawGlyph('y');
+    fontlib_DrawGlyph('s');
+    fontlib_DrawString("Hello, World!\nThe quick brown fox jumps over the lazy dog. Jack Dawes loves my big sphinx of quartz. ");
     
     /* Pause */
     while (!os_GetCSC());

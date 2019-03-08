@@ -4,7 +4,7 @@
 ; Name = MicrOS Default Font
 	db	0 ; font format version
 	db	14 ; height
-	db	255 ; glyph count
+	db	0 ; glyph count
 	db	0 ; first codepoint
 	dl	.widthsTable - .header ; offset to widths table
 	dl	.bitmapsTable - .header ; offset to bitmaps offsets table

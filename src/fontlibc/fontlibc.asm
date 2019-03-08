@@ -32,12 +32,22 @@ library 'FONTLIBC', 1
 	export fontlib_SetItalicSpacingAdjustment
 	export fontlib_GetItalicSpacingAdjustment
 	export fontlib_GetCurrentFontHeight
-	export fontlib_ValidateCodepoint
+	export fontlib_ValidateCodePoint
+	export fontlib_GetTotalGlyphs
+	export fontlib_GetFirstGlyph
+	export fontlib_SetNewlineCode
+	export fontlib_GetNewlineCode
+	export fontlib_SetAlternateStopCode
+	export fontlib_SetAlternateStopCode
+	export fontlib_SetFirstPrintableCodePoint
+	export fontlib_GetFirstPrintableCodePoint
 	export fontlib_GetGlyphWidth
 	export fontlib_GetStringWidth
+	export fontlib_GetStringWidthL
 	export fontlib_GetLastCharacterRead
 	export fontlib_DrawGlyph
 	export fontlib_DrawString
+	export fontlib_DrawStringL
 	
 
 
@@ -49,6 +59,9 @@ TRASPARENT_COLOR   := 0
 TEXT_FG_COLOR      := 0
 TEXT_BG_COLOR      := 255
 TEXT_TP_COLOR      := 255
+local2 := -9
+local1 := -6
+local0 := -3
 arg00 := 0
 arg0 := 3
 arg1 := 6
@@ -58,6 +71,8 @@ arg4 := 15
 arg5 := 18
 arg6 := 21
 chFirstPrintingCode	equ	16
+chNewLine	equ	0Ah
+
 
 ;-------------------------------------------------------------------------------
 fontStruct.version := 0
@@ -313,23 +328,58 @@ fontlib_SetFont:
 ;  - arg0: Pointer to font
 ;  - arg1: Load flags
 ; Returns:
-;  - Nothing
+;  - bool:
+;     - true if font loaded successfully
+;     - false on failure (invalid font, or you tried to use the version byte)
+	; Fetch arg0
 	ld	hl, arg0
 	add	hl, sp
 	ld	hl, (hl)
+	; Verify version byte is zero like it's supposed to be
+	; The literal only reason there's any validation here at all is to
+	; enforce keeping the version byte reserved.
+	xor	a
+	cp	(hl)
+	ret	nz
+	; Load font data
 	ld	(_CurrentFontRoot), hl
 	push	hl
 	ld	de, _CurrentFontProperties
 	ld	bc, fontStruct.fontPropertiesSize
 	ldir
-	pop	de
+	pop	bc
 	ld	iy, _CurrentFontProperties
+	; A height >= 128 is unreasonable
+	ld	a, (iy + fontStruct.height)
+	or	a
+	ret	z	; Also unreasonable: a zero-height font
+	and	80h
+	jr	nz, .false
+	ld	a, 63
+	cp	(iy + fontStruct.spaceAbove)
+	jr	c, .false
+	cp	(iy + fontStruct.spaceBelow)
+	jr	c, .false
+.validateOffsets:
+	; Now convert offsets into actual pointers
+	; Validate that offset is at least semi-reasonable
+	ld	de, 0FF00h	; Maximum reasonable font data size
 	ld	hl, (iy + fontStruct.widthsTablePtr)
+	sbc	hl, de	; Doesn't really matter if we're off-by-one here
+	ret	nc
 	add	hl, de
+	add	hl, bc
 	ld	(iy + fontStruct.widthsTablePtr), hl
 	ld	hl, (iy + fontStruct.bitmapsTablePtr)
+	sbc	hl, de	; C reset from ADD HL, BC above (we're in Crazytown if there was carry)
+	ret	nc
 	add	hl, de
+	add	hl, bc
 	ld	(iy + fontStruct.bitmapsTablePtr), hl
+	ld	a, 1
+	ret
+.false:
+	xor	a
 	ret
 
 
@@ -388,7 +438,7 @@ DrawGlyphRaw:
 	; Subtract out firstGlyph
 	ld	hl, _CurrentFontProperties.firstGlyph
 	sub	(hl)
-	; Get glyph width and update loop controls
+	; Get glyph width
 	ld	c, a
 	or	a
 	sbc	hl, hl
@@ -396,8 +446,25 @@ DrawGlyphRaw:
 	ld	de, (_CurrentFontProperties.widthsTablePtr)
 	add	hl, de
 	ld	a, (hl)
+	pop	de
 DrawGlyphRawKnownWidth:
+; Handles the actual main work of drawing a glyph.
+; Inputs:
+;  - DE: Draw pointer
+;  - C: Glyph index, with _CurrentFontProperties.firstGlyph subtracted out
+;  - A: Glyph width
+;  - Font properties variables
+; Outputs:
+;  - IYL: Width of glyph (not including any italicSpaceAdjust)
+;  - IYH: Zero
+;  - IYU: Untouched
+;  - Glyph drawn
+; Destroys:
+;  - Basically everything except shadow and configuration registers.
+;    And don't count on that not changing.
+	; Update loop controls
 	ld	iyl, a
+	dec	a
 	rra
 	srl	a
 	srl	a
@@ -415,8 +482,8 @@ DrawGlyphRawKnownWidth:
 	lea.sis	ix, ix + 0	; Truncate to 16-bits
 	ld	bc, (_CurrentFontRoot)
 	add	ix, bc
-	pop	hl
 	; Now deal with the spaceAbove metric
+	ex	de, hl
 	ld	a, (_TextTransparentMode)
 	ld	c, a
 	ld	a, (_CurrentFontProperties.spaceAbove)
@@ -506,7 +573,7 @@ DrawEmptyLines:
 ;  - AF
 ;  - BC
 ;  - DE
-;  - IYH
+;  - IYH = 0
 	or	a
 	ret	z
 	bit	0, c
@@ -538,62 +605,160 @@ DrawEmptyLines:
 
 ;-------------------------------------------------------------------------------
 fontlib_DrawString:
+; Draws a string, with no set maximum length
+	pop	bc
+	ld	(.retter + 1), bc
+	pop	de
+	scf
+	sbc	hl, hl
+	push	hl
+	push	de
+	call	fontlib_DrawStringL
+	pop	de
+.retter:
+	jp	0
+
+
+;-------------------------------------------------------------------------------
+fontlib_DrawStringL:
+; Draws a string, ending when any of the following is true:
+;  - arg1 glyphs have been printed;
+;  - an unknown control code is encountered; or,
+;  - there is no more space left in the window.
 ;  - Compute target address
 ;  - For each glyph:
 ;     - Check if glyph is control code
+;     - Check if glyph is valid
 ;     - Check if drawing glyph will extend past right side of window
 ;     - 
 	push	ix
-	; Read arg0
-	ld	hl, arg0
-	add	hl, sp
-	ld	ix, (hl)
-	
+	; Since reentrancy isn't likely to be needed. . . .
+	; Instead of using stack locals, just access all our local and global
+	; variables via the (IX + offset) addressing mode.
+	ld	ix, DataBaseAddr
+	ld	iy, 0
+	add	iy, sp
+	ld	hl, (iy + arg1)
+	dec	hl	; We're reading the string with pre-increment, so we need an initial pre-decrement
+	ld	(ix + strReadPtr), hl
+	ld	hl, (iy + arg2)
+	ld	(ix + charactersLeft), hl
+	; Zero IYU, needed later
+	;lea.sis	iy, iy + 0
+	ld	iy, 0
+.restartX:
 ;	; Compute target drawing address
 	ld	hl, (_TextY)
 	ld	h, LcdWidth / 2
 	mlt	hl
 	add	hl, hl
-	ld	bc, (_TextX)
-	push	bc
+	ld	bc, (ix + textX)
 	add	hl, bc
 	ld	bc, (mpLcdLpbase)
 	add	hl, bc
-
-
-	ld	a, (ix)
-	cp	chFirstPrintingCode
-	jr	c, .exit
-
-	
-	
-.exit:
-	pop	ix
+	ex	de, hl
+.mainLoop:
+	; Check that we haven't exceeded our glyph printing limit
+	ld	bc, (ix + charactersLeft)
+	sbc	hl, hl
+	adc	hl, bc
+	jr	z, .exit
+	dec	bc
+	ld	(ix + charactersLeft), bc
+; Read & validate glyph
+	ld	hl, (ix + strReadPtr)
+	inc	hl
+	ld	(ix + strReadPtr), hl
+	; Read character
+	ld	a, (hl)
+	; Check if control code
+	cp	(ix + firstPrintableCodePoint)
+	jr	nc, .notControlCode
+	or	a
+	jr	z, .exit
+	cp	(ix + newLineCode)
+	jr	z, .printNewLine
+.exit:	pop	ix
 	ret
-;_DrawString:
-;	ex	de, hl
-;	; Compute target address
-;	ld	hl, (_TextY)
-;	ld	h, LcdWidth / 2
-;	mlt	hl
-;	add	hl, hl
-;	ld	bc, (_TextX)
-;	push	bc
-;	add	hl, bc
-;	ld	bc, (mpLcdLpbase)
-;	add	hl, bc
-;.byteLoop:
-;	ld	a, (de)
-;	inc	de
-;	push	de
-;	push	hl
-;	call	_DrawGlyphRaw
-;	lea	de, iy + 0
-;	add	hl, de
-;	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
-;	ld	e, a
-;	sbc	hl, de
-;	ld	(_TextX), hl
+.notControlCode:
+	cp	(ix + alternateStopCode)
+	jr	z, .exit
+	; Check if font has given codepoint
+	sub	(ix + fontStruct.firstGlyph)
+	jr	c, .exit
+	sbc	hl, hl	; Zero for later
+	ld	l, a
+	sub	(ix + fontStruct.totalGlyphs)
+	jr	c, .definitelyValid
+	cp	l	; 0 = 256 total glyphs, so check for zero
+	jr	nz, .exit	; Z iff L == A, which is true iff totalGlyphs == 0
+.definitelyValid:
+	ld	(ix + readCharacter), l
+	; Look up width
+	ld	bc, (ix + fontStruct.widthsTablePtr)
+	add	hl, bc
+	ld	a, (hl)
+	; Check if glyph will fit in window
+	ld	hl, (ix + textX)
+	ld	bc, 0
+	ld	c, a
+	add	hl, bc
+	ld	bc, (ix + textXMax)
+;	or	a	; C should already be reset from ADD HL, BC
+	sbc	hl, bc
+	add	hl, bc
+	jr	nc, .newLine
+	; Correct for italicness
+	ld	c, (ix + fontStruct.italicSpaceAdjust)
+	ld	b, 0
+	or	a
+	sbc	hl, bc
+	ld	(ix + textX), hl
+	; OK, ready to draw the glyph
+	ld	c, (ix + readCharacter)
+	push	de
+	call	DrawGlyphRawKnownWidth
+	pop	de
+	ld	ix, DataBaseAddr
+	; Update write pointer
+	ld	a, iyl
+	sub	(ix + fontStruct.italicSpaceAdjust)
+	sbc	hl, hl	; Sign-extend A for HL
+	ld	l, a
+	add	hl, de
+	ex	de, hl
+	jr	.mainLoop
+;	jp	.restartX
+.printNewLine:
+	ld	(ix + readCharacter), 0
+.newLine:
+; TODO:
+;  - If needed, do ClearEOL stuff
+; New line control:
+;  - Enable wrapping
+;  - Enable automatic ClearEOL
+;  - Pre-clear new line
+	ld	hl, (ix + textXMin)
+	ld	(ix + textX), hl
+	ld	a, (ix + fontStruct.height)
+	add	a, (ix + fontStruct.spaceAbove)
+	add	a, (ix + fontStruct.spaceBelow)
+	add	a, (ix + textY)
+	jr	c, .exit	; Carry = definitely went past YMax
+	ld	(ix + textY), a
+	cp	(ix + textYMax)
+	jr	nc, .newLineOutOfSpace
+	ld	a, (ix + readCharacter)
+	or	a
+	jp	z, .restartX
+	ld	hl, (ix + strReadPtr)
+	dec	hl
+	ld	(ix + strReadPtr), hl
+	jp	.restartX
+.newLineOutOfSpace:
+	ld	a, (ix + textYMin)
+	ld	(ix + textY), a
+	jp	.exit
 
 
 ;-------------------------------------------------------------------------------
@@ -616,7 +781,6 @@ fontlib_SetForegroundColor:
 	ld	a, (hl)
 	ld	(_TextStraightForegroundColor), a
 	ret
-	
 
 
 ;-------------------------------------------------------------------------------
@@ -782,8 +946,8 @@ fontlib_GetCurrentFontHeight:
 
 
 ;-------------------------------------------------------------------------------
-fontlib_ValidateCodepoint:
-; Returns true if the given codepoint is present in the current font.
+fontlib_ValidateCodePoint:
+; Returns true if the given code point is present in the current font.
 ; Arguments:
 ;  - arg0: Glyph index
 ; Returns:
@@ -794,12 +958,126 @@ fontlib_ValidateCodepoint:
 	ld	hl, _CurrentFontProperties.firstGlyph
 	sub	(hl)
 	ccf
-	jr	c, .invalidIndex
+	jr	nc, .exit
 	ld	hl, _CurrentFontProperties.totalGlyphs
+	; Check if totalGlyphs is zero
+	inc	(hl)
+	dec	(hl)
+; Alternate method, one byte bigger, one cycle faster
+;	ld	b, (hl)
+;	inc	b
+;	dec	b
+	jr	z, .exit
 	sub	(hl)
-.invalidIndex:
-	sbc	a, a
+.exit:	sbc	a, a
 	and	1
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetTotalGlyphs:
+; Returns the total number of printable glyphs in the font.
+; This can return 256.
+; Arguments:
+;  - None
+; Returns:
+;  - Total number of printable glyphs
+	or	a
+	sbc	hl, hl
+	ld	a, (_CurrentFontProperties.totalGlyphs)
+	ld	l, a
+	or	a
+	ret	z
+	inc	h
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetFirstGlyph:
+; Returns the code point of the first printable glyph.
+; Arguments:
+;  - None
+; Returns:
+;  - Total number of printable glyphs
+	ld	a, (_CurrentFontProperties.firstGlyph)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetNewlineCode:
+; Set the code point that is recognized as being a newline code.
+; Arguments:
+;  - arg0: New code point to use
+; Returns:
+;  - Nothing
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	(_TextNewLineCode), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetNewlineCode:
+; Returns the code point that is currently recognized as being a newline.
+; Arguments:
+;  - None
+; Returns:
+;  - Code point that is currently recognized as being a newline
+	ld	a, (_TextNewLineCode)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetAlternateStopCode:
+; Set the code point that is recognized as being an alternate stop code.
+; Arguments:
+;  - arg0: New code point to use
+; Returns:
+;  - Nothing
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	(_TextAlternateStopCode), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetAlternateStopCode:
+; Returns the code point that is currently recognized as being an alternate stop
+; code.
+; Arguments:
+;  - None
+; Returns:
+;  - Code point that is currently recognized as being an alternate stop code
+	ld	a, (_TextAlternateStopCode)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetFirstPrintableCodePoint:
+; Set the code point that is recognized as being an alternate stop code.
+; Arguments:
+;  - arg0: New code point to use
+; Returns:
+;  - Nothing
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	(_TextFirstPrintableCodePoint), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetFirstPrintableCodePoint:
+; Returns the first code point that is currently recognized as being printable.
+; code.
+; Arguments:
+;  - None
+; Returns:
+;  - Code point that is currently recognized as being the first printable code
+;    point.
+	ld	a, (_TextFirstPrintableCodePoint)
 	ret
 
 
@@ -847,7 +1125,7 @@ GetGlyphWidth:
 	ret
 
 
-;-------------------------------------------------------------------------------
+;;-------------------------------------------------------------------------------
 fontlib_GetStringWidth:
 ; Returns the width of a string.
 ; Stops when it encounters any control code or a codepoint not in the current
@@ -856,62 +1134,131 @@ fontlib_GetStringWidth:
 ;  - arg0: Pointer to string
 ; Returns:
 ;  - Width of string
-	ld	hl, arg0
-	add	hl, sp
-	ld	iy, (hl)
-	sbc	hl, hl	; C reset from above ADD
-	push	ix
-	ld	ix, 0
-	ld	de, (_CurrentFontProperties.widthsTablePtr)
-	ld	a, (_CurrentFontProperties.firstGlyph)
-	ld	b, a
-	ld	a, (_CurrentFontProperties.widthsTablePtr)
-	ld	c, a
+	pop	bc
+	ld	(.retter + 1), bc
+	pop	de
+	scf
+	sbc	hl, hl
+	push	hl
+	push	de
+	call	fontlib_DrawStringL
+	pop	de
+.retter:
+	jp	0
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetStringWidthL:
+; Returns the width of a string.
+; Stops when it encounters any control code or a codepoint not in the current
+; font, or when it reaches the maximum number of characters to process.
+; Arguments:
+;  - arg0: Pointer to string
+;  - arg1: Maximum number of characters to process
+; Returns:
+;  - Width of string
+	ld	hl, arg0		; 4
+	add	hl, sp			; 1
+	push	ix			; 2
+	ld	ix, DataBaseAddr	; 5
+	ld	bc, (hl)		; 2
+	inc	hl			; 1
+	inc	hl			; 1
+	inc	hl			; 1
+	ld	hl, (hl)		; 2
+	ld	(ix + charactersLeft), hl ; 3, total = 22 bytes
+;	ld	iy, 0			; 5
+;	add	iy, sp			; 2
+;	push	ix			; 2
+;	ld	ix, DataBaseAddr	; 5
+;	ld	bc, (iy + arg0)		; 3
+;	ld	hl, (iy + arg1)		; 3
+;	ld	(ix + charactersLeft), hl ; 3, total = 23 bytes
+	ld	iy, 0
+	ld	de, (ix + fontStruct.widthsTablePtr)
+	ld	a, (bc)
+	or	a
+	jr	z, .exitFast
 .loop:
-	ld	a, (iy)
-	cp	chFirstPrintingCode
+	; Check that we haven't exceeded our glyph printing limit
+	ld	hl, (ix + charactersLeft)
+	add	hl, bc
+	or	a
+	sbc	hl, bc
+	jr	z, .exit
+	dec	hl
+	ld	(ix + charactersLeft), hl
+	; Fetch next item
+	ld	a, (bc)
+	cp	(ix + firstPrintableCodePoint)
 	jr	c, .exit
-	sub	b
+	or	a
+	jr	z, .exit
+	cp	(ix + alternateStopCode)
+	jr	z, .exit
+	sub	(ix + fontStruct.firstGlyph)
 	jr	c, .exit
-	cp	c
-	jr	nc, .exit
-	inc	iy
+	cp	(ix + fontStruct.totalGlyphs)
+	jr	c, .validCodepoint
+	ld	(ix + readCharacter), a
+	ld	a, (ix + fontStruct.totalGlyphs)
+	or	a
+	jr	nz, .exit
+	ld	a, (ix + readCharacter)
+.validCodepoint:
+	inc	bc
+	or	a
+	sbc	hl, hl
 	ld	l, a
 	add	hl, de
 	ld	a, (hl)
-	ld	hl, _CurrentFontProperties.italicSpaceAdjust
-	sub	(hl)
-	sbc	hl, hl
+	sub	(ix + fontStruct.italicSpaceAdjust)	; So if this results in a negative number
+	sbc	hl, hl	; then this too will become negative, which gives the intended result, I guess
 	ld	l, a
 	ex	de, hl
-	add	ix, de
+	add	iy, de
 	ex	de, hl
-	sbc	hl, hl
 	jr	.loop
 .exit:
-	ex	de, hl
-	ld	a, (_CurrentFontProperties.italicSpaceAdjust)
+	ld	a, (ix + fontStruct.italicSpaceAdjust)
+	neg
+	ld	de, -1
 	ld	e, a
-	add	ix, de
-	ld	(_TextLastCharacterRead), iy
-	lea	hl, ix + 0
+	add	iy, de
+.exitFast:
+	ld	(ix + strReadPtr), bc
+	lea	hl, iy + 0
 	pop	ix
 	ret
 
 
 ;-------------------------------------------------------------------------------
 fontlib_GetLastCharacterRead:
-; font.
+; Returns the address of the last character printed by DrawString or processed
+; by GetStrWidth.
 ; Arguments:
 ;  - None
 ; Returns:
-;  - 
+;  - Pointer to last character read
 	ld	hl, (_TextLastCharacterRead)
 	ret
 
 
 ;-------------------------------------------------------------------------------
-CCallback:
+fontlib_GetCharactersRemaining:
+; Allows you to figure out whether DrawStringL or GetStringWidthL returned due
+; to having finished processed max_characters.
+; Arguments:
+;  - None
+; Returns:
+;  - Last internal value of tempCharactersLeft, taken from max_characters param
+;    to GetStringWidth and DrawString.
+	ld	hl, (tempCharactersLeft)
+	ret
+
+
+;-------------------------------------------------------------------------------
+;CCallback:
 ; Internal routine for calling a callback written in C.
 ; Detects if the callback is NULL, and returns NC if so.
 ; Inputs:
@@ -929,57 +1276,80 @@ CCallback:
 ;  - NC if callback was NULL, C if callback was taken
 ; Destroys:
 ;  - Everything a C routine can destory
-	ld	de, (hl)
-	or	a
-	sbc	hl, hl
-	sbc	hl, de
-	ret	nc
-;	pop	hl
-;	ld	(.returnAddress + 1), hl
+;	ld	de, (hl)
+;	or	a
+;	sbc	hl, hl
+;	sbc	hl, de
+;	ret	nc
 ;	ld	hl, .retpoint
-;	push	hl
-	ld	hl, .retpoint
-	ex	(sp), hl
-	ld	(.returnAddress + 1), hl
-	ex	de, hl
-	jp	(hl)
-.retpoint:
-	scf
-.returnAddress:
-	jp	0
+;	ex	(sp), hl
+;	ld	(.returnAddress + 1), hl
+;	ex	de, hl
+;	jp	(hl)
+;.retpoint:
+;	scf
+;.returnAddress:
+;	jp	0
 
 
 ;-------------------------------------------------------------------------------
 ; Data
 _TextDefaultWindow:
+textDefaultWindow := _TextDefaultWindow - DataBaseAddr
 	dl	0
 	dl	0
 	dl	LcdWidth
 	dl	LcdHeight
 _TextXMin:
+textXMin := _TextXMin - DataBaseAddr
 	dl	0
 _TextYMin:
+textYMin := _TextYMin - DataBaseAddr
 	dl	0
 _TextXMax:
+textXMax := _TextXMax - DataBaseAddr
 	dl	LcdWidth
 _TextYMax:
+textYMax := _TextYMax - DataBaseAddr
 	dl	LcdHeight
 _TextX:
+textX := _TextX - DataBaseAddr
 	dl	0
 _TextY:
+textY := _TextY - DataBaseAddr
 	dl	0
 ;_TextForeColor:
 ;	db	255
 ;_TextBackColor:
 ;	db	0
 _TextTransparentMode:
+textTransparentMode := _TextTransparentMode - DataBaseAddr
+	db	0
+_TextNoNewLines:
+textNoNewLines := _TextNoNewLines - DataBaseAddr
 	db	0
 _TextLastCharacterRead:
+strReadPtr := _TextLastCharacterRead - DataBaseAddr
 	dl	0
-_ControlCodeCallback:
+tempCharactersLeft:
+charactersLeft := tempCharactersLeft - DataBaseAddr
 	dl	0
+_TextAlternateStopCode:
+alternateStopCode := _TextAlternateStopCode - DataBaseAddr
+	db	0
+_TextFirstPrintableCodePoint:
+firstPrintableCodePoint := _TextFirstPrintableCodePoint - DataBaseAddr
+	db	chFirstPrintingCode
+_TextNewLineCode:
+newLineCode := _TextNewLineCode - DataBaseAddr
+	db	chNewLine
+tempRandom:
+readCharacter := tempRandom - DataBaseAddr
+	db	0
 _CurrentFontRoot:
+currentFontRoot := _CurrentFontRoot - DataBaseAddr
 	dl	0
+DataBaseAddr:
 _CurrentFontProperties:
 .version:
 	db	0

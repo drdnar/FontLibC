@@ -17,6 +17,8 @@ extern "C" {
 typedef enum {
 	/* clear = sans-serif font */
 	SERIF = 0x01,
+	/* If both are set, then assume there's no difference between oblique
+	 * and italic styles. */
 	OBLIQUE = 0x02,
 	ITALIC = 0x04,
 	/* Chances are you're not using this library for monospaced fonts.
@@ -39,6 +41,7 @@ typedef struct {
 } font_metadata;
 
 typedef struct {
+	/* Must be zero */
 	uint8_t fontVersion;
 	/* Height in pixels */
 	uint8_t height;
@@ -141,8 +144,11 @@ void fontlib_ShiftCursorPosition(int x, uint8_t y);
  * Sets the current font
  * @param font_data Pointer to font data
  * @param flags Information about how to process the font (unused)
+ * @return Returns false if the font seems invalid for any reason
+ * WARNING: If false is returned, no valid font is currently loaded and trying
+ * to print will print garbage!
  */
-void fontlib_SetFont(uint8_t* font_data, int flags);
+bool fontlib_SetFont(uint8_t* font_data, int flags);
 
 /**
  * Sets the current foreground color FontLibC will use for drawing.
@@ -239,11 +245,72 @@ uint8_t fontlib_GetItalicSpacingAdjustment(void);
 uint8_t fontlib_GetCurrentFontHeight(void);
 
 /**
- * Tests whether the current font has the given codepoint
- * @param codepoint Codepoint to test
- * @return true if codepoint is in current font, false if not
+ * Tests whether the current font has the given code point
+ * @param code_point Code point to test
+ * @return true if code_point is in current font, false if not
  */
-bool fontlib_ValidateCodepoint(char codepoint);
+bool fontlib_ValidateCodePoint(char code_point);
+
+/**
+ * Returns the total number of printable glyphs in the font.
+ * This can return 256; no valid font has 0 printable glyphs.
+ * @return Total number of printable glyphs
+ */
+uint24_t fontlib_GetTotalGlyphs(void);
+
+/**
+ * Returns the code point of the first printable glyph.
+ * Note that the C SDK makes char SIGNED by default, so you probably want to
+ * typecast this to unsigned char before attempting any math with it.
+ * @return First print glyph code point
+ */
+char fontlib_GetFirstGlyph(void);
+
+/**
+ * Allows you to set the code point that is recognized as being a new line code.
+ * You can set this to zero to prevent new line code processing.
+ * This defaults to 0x0A (ASCII line feed/UNIX newline)
+ * @param code_point New code point to use for newline
+ */
+void fontlib_SetNewlineCode(char code_point);
+
+/**
+ * Returns the code point that is currently recognized as being a newline.
+ * @return Current newline
+ */
+char fontlib_GetNewlineCode(void);
+
+/**
+ * Sets an alternate code point to recognize as a stop code.
+ * For example, you can set this to space to make DrawString and GetStringWidth
+ * stop processing when they reach a space.
+ * Setting this to zero will cause this to be ignored.
+ * NULL (0) will still be recognized as a stop code regardless of value.
+ * Defaults to 0.
+ * @param code_point Additional code point to recognize as a stop code.
+ */
+void fontlib_SetAlternateStopCode(char code_point);
+
+/**
+ * Returns the current alternate stop code.
+ * @return Current alternate stop code.
+ */
+char fontlib_GetAlternateStopCode(void);
+
+/**
+ * Sets the first code point considered printable.
+ * All code points before this will be considered control codes.
+ * Setting this to 0 (NULL) will NOT cause NULL to be ignored.
+ * This defaults 0x10.
+ * @param code_point First printable code point
+ */
+void fontlib_SetFirstPrintableCodePoint(char code_point);
+
+/**
+ * Returns the first code point considered printable.
+ * @return Current first printable code point
+ */
+char fontlib_GetFirstPrintableCodePoint(void);
 
 /**
  * Returns the width of the given glyph
@@ -254,12 +321,23 @@ uint8_t fontlib_GetGlyphWidth(char codepoint);
 
 /**
  * Returns the width of a string printed in the current font.
- * Stops processing when it encounters any control code or a codepoint not in
+ * Stops processing when it encounters ANY control code or a codepoint not in
  * the current font.
  * @param str Pointer to string
  * @return Width of string
  */
 uint24_t fontlib_GetStringWidth(char* str);
+
+/**
+ * Returns the width of a string printed in the current font.
+ * Stops processing when it encounters ANY control code or a codepoint not in
+ * the current font, or when max_characters have been processed.
+ * @param str Pointer to string
+ * @param max_characters Maximum number of characters to process
+ * (or 0 if not needed)
+ * @return Width of string
+ */
+uint24_t fontlib_GetStringWidthL(char* str, int24_t max_characters);
 
 /**
  * Gets the location of the last character processed by GetStringWidth or 
@@ -269,6 +347,14 @@ uint24_t fontlib_GetStringWidth(char* str);
 char* fontlib_GetLastCharacterRead(void);
 
 /**
+ * Returns 0 if DrawStringL or GetStringWidthL returned because max_characters
+ * were processed.  Returns a non-zero number otherwise.
+ * @return Either zero, or a non-zero number depending on the reason DrawStringL
+ * or GetStringWidthL returned.
+ */
+int24_t fontlib_GetCharactersRemaining(void);
+
+/**
  * Draws a glyph
  * @param glyph Codepoint
  */
@@ -276,9 +362,19 @@ void fontlib_DrawGlyph(uint8_t glyph);
 
 /**
  * Draws a string
+ * THIS IS NOT REENTRANT (though if you need that, you're probably not using C)
  * @param str Pointer to string
  */
 void fontlib_DrawString(char* str);
+
+/**
+ * Draws a string, up to a maximum number of characters
+ * THIS IS NOT REENTRANT (though if you need that, you're probably not using C)
+ * @param str Pointer to string
+ * @param max_characters Maximum number of characters to attempt to print, may
+ * return early if some other condition requires returning
+ */
+void fontlib_DrawStringL(char* str, int max_characters);
 
 
 #ifdef __cplusplus
