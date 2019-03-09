@@ -15,7 +15,7 @@
 #include "fontlibc.h"
 
 uint8_t test_font[] = {
-	#include "testfont.inc"
+	#include "nimbus9.inc"
 };
 
 /* Main Function */
@@ -27,7 +27,7 @@ void main(void) {
     
 /*    while (!os_GetCSC()); */
     
-    fontlib_SetWindow(1, 1, 300, 40);
+    fontlib_SetWindow(1, 1, 300, 80);
     fontlib_GetWindow(&xmin, &ymin, NULL, NULL);
     fontlib_SetCursorPosition(2, 2);
     fontlib_SetForegroundColor(0xC0);
@@ -35,8 +35,10 @@ void main(void) {
     fontlib_SetLineSpacing(2,4);
     
     fontlib_SetFont(test_font, 0);
+    fontlib_SetNewlineOptions(FONTLIB_ENABLE_AUTO_WRAP | FONTLIB_AUTO_CLEAR_TO_EOL | FONTLIB_PRECLEAR_NEWLINE);
     fontlib_DrawGlyph('*');
     fontlib_DrawString("Hello, World!\nThe quick brown fox jumps over the lazy dog. Jack Dawes loves my big sphinx of quartz. ");
+    fontlib_Newline();
     
     /* Pause */
     while (!os_GetCSC());
