@@ -616,8 +616,14 @@ DrawEmptyLines:
 
 ;-------------------------------------------------------------------------------
 fontlib_DrawString:
-; Draws a string, with no set maximum length
-	pop	bc
+; Draws a string, ending when either:
+;  - an unknown control code is encountered (or NULL), or
+;  - there is no more space left in the window.
+; Inputs:
+;  - arg0: Pointer to string
+;  - arg1: Maximum number of characters have been printed
+; Outputs:
+;  - Stuff printed	pop	bc
 	ld	(.retter + 1), bc
 	pop	de
 	scf
@@ -633,10 +639,14 @@ fontlib_DrawString:
 ;-------------------------------------------------------------------------------
 fontlib_DrawStringL:
 ; Draws a string, ending when any of the following is true:
-;  - arg1 glyphs have been printed;
-;  - an unknown control code is encountered; or,
+;  - arg1 characters have been printed;
+;  - an unknown control code is encountered (or NULL); or,
 ;  - there is no more space left in the window.
-
+; Inputs:
+;  - arg0: Pointer to string
+;  - arg1: Maximum number of characters have been printed
+; Outputs:
+;  - Stuff printed
 	push	ix
 	; Since reentrancy isn't likely to be needed. . . .
 	; Instead of using stack locals, just access all our local and global
@@ -1342,6 +1352,7 @@ fontlib_ClearEOL:
 ;  - None
 ; Outputs:
 ;  - None
+	; Compute the rectangle size to clear
 	ld	de, (_TextX)
 	ld	hl, (_TextXMax)
 	or	a
@@ -1369,13 +1380,15 @@ ClearRect:
 ;  - A = 0
 ; Destroys:
 ;  - AF, BC, DE, HL, IY
+	; Check for trivial case
+	ld	b, a
+	or	a
+	ret	z
 	ld	a, e
 	or	d
 	ret	z
-;	bit	7, d
-;.blah:	jr	nz, .blah
-;	ret	nz
 	dec	de
+	; Save width into IX for quick reloading during loop2
 	push	ix
 	ld	ix, 0
 	add	ix, de
@@ -1391,16 +1404,19 @@ ClearRect:
 	ex	de, hl
 	add	iy, de
 	lea	hl, iy + 0
-	; First column
+	; Do an initial first column
+	; This avoid some awkwardness with loop control and running out of registers
 	ld	a, (_TextStraightBackgroundColor)
 	ld	de, LcdWidth
 .loop1:
 	ld	(hl), a
 	add	hl, de
 	djnz	.loop1
+	; Check if doing just one column was enough
 	ld	a, ixl
 	or	ixh
 	jr	z, .exit
+	; Main loop
 	ld	a, c
 .loop2:
 	lea	bc, ix + 0
