@@ -25,6 +25,12 @@ uint8_t artwiz_snap_20[] = {
 	#include "artwizsnap-20.inc"
 };
 
+void printCentered(char* string, uint8_t* font, uint8_t sa, uint8_t sb, uint8_t vspace) {
+	fontlib_SetFont(font, 0); fontlib_SetLineSpacing(sa, sb);
+	fontlib_SetCursorPosition(320/2 - (fontlib_GetStringWidth(string) / 2), fontlib_GetCursorY() + vspace);
+	fontlib_DrawString(string);
+}
+
 /* Main Function */
 void main(void) {
     int xmin, xmax;
@@ -32,6 +38,8 @@ void main(void) {
     char* title = " Cemetech \n";
     char* logo = "  Make cool things, teach cool stuff at  \n";
     char* website = " http://www.cemetech.net ";
+    char* hashtag1 = " #T3IC \n";
+    char* hashtag2 = " #cemetech ";
     gfx_Begin();
     gfx_FillScreen(gfx_black);
     
@@ -48,19 +56,15 @@ void main(void) {
     
     fontlib_SetNewlineOptions(FONTLIB_ENABLE_AUTO_WRAP);
     
-    fontlib_SetFont(artwiz_snap_20, 0); fontlib_SetLineSpacing(2, 2);
-    fontlib_SetCursorPosition(320/2 - (fontlib_GetStringWidth(title) / 2), 48);
-    fontlib_DrawString(title);
+    printCentered(title, artwiz_snap_20, 2, 2, 48);
     
-    fontlib_SetFont(artwiz_snap_10, 0); fontlib_SetLineSpacing(2, 2);
-    fontlib_SetCursorPosition(320/2 - (fontlib_GetStringWidth(logo) / 2), fontlib_GetCursorY() + 10);
-    fontlib_DrawString(logo);
+    printCentered(logo, artwiz_snap_10, 2, 2, 10);
     
-    fontlib_SetFont(artwiz_snap_20, 0); fontlib_SetLineSpacing(2, 2);
-    fontlib_SetCursorPosition(320/2 - (fontlib_GetStringWidth(website) / 2), fontlib_GetCursorY() + 10);
-    fontlib_DrawString(website);
+    printCentered(website, artwiz_snap_20, 2, 2, 10);
     
-    
+    fontlib_SetCursorPosition(0, 150);
+    printCentered(hashtag1, artwiz_snap_10, 2, 2, 0);
+    printCentered(hashtag2, artwiz_snap_10, 2, 2, 0);
     
 /*    fontlib_SetFont(artwiz_snap_10, 0);
     fontlib_SetNewlineOptions(FONTLIB_ENABLE_AUTO_WRAP | FONTLIB_AUTO_CLEAR_TO_EOL | FONTLIB_PRECLEAR_NEWLINE);
