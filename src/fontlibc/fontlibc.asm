@@ -48,7 +48,11 @@ library 'FONTLIBC', 1
 	export fontlib_DrawGlyph
 	export fontlib_DrawString
 	export fontlib_DrawStringL
-	
+	export fontlib_ClearEOL
+	export fontlib_ClearWindow
+	export fontlib_Newline
+	export fontlib_SetNewlineOptions
+	export fontlib_GetNewlineOptions
 
 
 ;-------------------------------------------------------------------------------
@@ -72,6 +76,13 @@ arg5 := 18
 arg6 := 21
 chFirstPrintingCode	equ	16
 chNewLine	equ	0Ah
+bEnableAutoWrap := 0
+mEnableAutoWrap := 1
+bAutoClearToEOL := 1
+mAutoClearToEOL := 2
+bPreclearNewline := 2
+mPreclearNewline := 4
+bWasNewline := 7
 
 
 ;-------------------------------------------------------------------------------
@@ -625,17 +636,13 @@ fontlib_DrawStringL:
 ;  - arg1 glyphs have been printed;
 ;  - an unknown control code is encountered; or,
 ;  - there is no more space left in the window.
-;  - Compute target address
-;  - For each glyph:
-;     - Check if glyph is control code
-;     - Check if glyph is valid
-;     - Check if drawing glyph will extend past right side of window
-;     - 
+
 	push	ix
 	; Since reentrancy isn't likely to be needed. . . .
 	; Instead of using stack locals, just access all our local and global
 	; variables via the (IX + offset) addressing mode.
 	ld	ix, DataBaseAddr
+	res	bWasNewline, (ix + newlineControl)
 	ld	iy, 0
 	add	iy, sp
 	ld	hl, (iy + arg1)
@@ -645,7 +652,7 @@ fontlib_DrawStringL:
 	ld	(ix + charactersLeft), hl
 	; Zero IYU, needed later
 	;lea.sis	iy, iy + 0
-	ld	iy, 0
+;	ld	iy, 0
 .restartX:
 ;	; Compute target drawing address
 	ld	hl, (_TextY)
@@ -677,7 +684,7 @@ fontlib_DrawStringL:
 	or	a
 	jr	z, .exit
 	cp	(ix + newLineCode)
-	jr	z, .printNewLine
+	jr	z, .printNewline
 .exit:	pop	ix
 	ret
 .notControlCode:
@@ -707,9 +714,10 @@ fontlib_DrawStringL:
 ;	or	a	; C should already be reset from ADD HL, BC
 	sbc	hl, bc
 	add	hl, bc
-	jr	nc, .newLine
+	jr	z, .colOK
+	jr	nc, .newline
 	; Correct for italicness
-	ld	c, (ix + fontStruct.italicSpaceAdjust)
+.colOK:	ld	c, (ix + fontStruct.italicSpaceAdjust)
 	ld	b, 0
 	or	a
 	sbc	hl, bc
@@ -728,37 +736,25 @@ fontlib_DrawStringL:
 	add	hl, de
 	ex	de, hl
 	jr	.mainLoop
-;	jp	.restartX
-.printNewLine:
-	ld	(ix + readCharacter), 0
-.newLine:
-; TODO:
-;  - If needed, do ClearEOL stuff
-; New line control:
-;  - Enable wrapping
-;  - Enable automatic ClearEOL
-;  - Pre-clear new line
-	ld	hl, (ix + textXMin)
-	ld	(ix + textX), hl
-	ld	a, (ix + fontStruct.height)
-	add	a, (ix + fontStruct.spaceAbove)
-	add	a, (ix + fontStruct.spaceBelow)
-	add	a, (ix + textY)
-	jr	c, .exit	; Carry = definitely went past YMax
-	ld	(ix + textY), a
-	cp	(ix + textYMax)
-	jr	nc, .newLineOutOfSpace
-	ld	a, (ix + readCharacter)
+.printNewline:
+	; Keep track of whether or not printing the current character needs to be retried
+	set	bWasNewline, (ix + newlineControl)
+.newline:
+	bit	bWasNewline, (ix + newlineControl)
+	jr	nz, .doNewline
+	bit	bEnableAutoWrap, (ix + newlineControl)
+	jr	z, .exit
+.doNewline:
+	call	fontlib_Newline
 	or	a
-	jp	z, .restartX
+	jr	nz, .exit
+	bit	bWasNewline, (ix + newlineControl)
+	res	bWasNewline, (ix + newlineControl)
+	jp	nz, .restartX
 	ld	hl, (ix + strReadPtr)
 	dec	hl
 	ld	(ix + strReadPtr), hl
 	jp	.restartX
-.newLineOutOfSpace:
-	ld	a, (ix + textYMin)
-	ld	(ix + textY), a
-	jp	.exit
 
 
 ;-------------------------------------------------------------------------------
@@ -1258,6 +1254,169 @@ fontlib_GetCharactersRemaining:
 
 
 ;-------------------------------------------------------------------------------
+fontlib_ClearWindow:
+; Erases the entire text window.
+; Inputs:
+;  - None
+; Outputs:
+;  - None
+	ld	hl, (_TextXMax)
+	ld	de, (_TextXMin)
+	or	a
+	sbc	hl, de
+	ex	de, hl
+	ld	a, (_TextYMax)
+	ld	hl, _TextYMin
+	sub	(hl)
+	ld	b, a
+	jr	ClearRect
+
+
+;-------------------------------------------------------------------------------
+fontlib_SetNewlineOptions:
+; Sets options for controlling newline behavior
+; Inputs:
+;  - arg0: Flags for newline behavior
+; Outputs:
+;  - None
+	ld	hl, arg0
+	add	hl, sp
+	ld	a, (hl)
+	ld	(_TextNewlineControl), a
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_GetNewlineOptions:
+; Returns current newline flags
+; Inputs:
+;  - None
+; Outputs:
+;  - Current newline flags
+	ld	a, (_TextNewlineControl)
+	ret
+
+
+;-------------------------------------------------------------------------------
+fontlib_Newline:
+; Prints a newline, may trigger pre/post clear
+; Inputs:
+;  - None
+; Outputs:
+;  - None
+	ld	iy, DataBaseAddr
+	bit	bAutoClearToEOL, (iy + newlineControl)
+	; I hate how nearly every time I think CALL cc or RET cc would be useful
+	; it turns out I need to do other stuff that prevents me from using it.
+	call	nz, fontlib_ClearEOL
+	ld	iy, DataBaseAddr
+	ld	hl, (iy + textXMin)
+	ld	(iy + textX), hl
+	ld	a, (iy + fontStruct.height)
+	add	a, (iy + fontStruct.spaceAbove)
+	add	a, (iy + fontStruct.spaceBelow)
+	add	a, (iy + textY)
+	jr	c, .outOfSpace	; Carry = definitely went past YMax
+	cp	(iy + textYMax)
+	jr	c, .checkPreClear
+.outOfSpace:
+	ld	a, 1
+	bit	bEnableAutoWrap, (iy + newlineControl)
+	ret	z
+	ld	a, (iy + textYMin)
+	ld	(iy + textY), a
+	ld	a, 1
+	ret
+.checkPreClear:
+	ld	(iy + textY), a
+	xor	a
+	bit	bPreclearNewline, (iy + newlineControl)
+	ret	z
+	; Fall through to ClearEOL
+
+
+;-------------------------------------------------------------------------------
+fontlib_ClearEOL:
+; Erases everything from the cursor to the right side of the text window.
+; Inputs:
+;  - None
+; Outputs:
+;  - None
+	ld	de, (_TextX)
+	ld	hl, (_TextXMax)
+	or	a
+	sbc	hl, de
+	ret	c
+	ret	z
+	dec	hl
+	ex	de, hl
+	ld	a, (_CurrentFontProperties.height)
+	ld	hl, _CurrentFontProperties.spaceAbove
+	add	a, (hl)
+	inc	hl
+	add	a, (hl)
+	ld	b, a
+	; Fall through to ClearRect
+
+
+;-------------------------------------------------------------------------------
+ClearRect:
+; Internal routine that erases a rectangle at the current cursor location.
+; Arguments:
+;  - B: Height
+;  - DE: Width
+; Returns:
+;  - A = 0
+; Destroys:
+;  - AF, BC, DE, HL, IY
+	ld	a, e
+	or	d
+	ret	z
+;	bit	7, d
+;.blah:	jr	nz, .blah
+;	ret	nz
+	dec	de
+	push	ix
+	ld	ix, 0
+	add	ix, de
+	ld	c, b
+	; Compute write pointer
+	ld	hl, (_TextY)
+	ld	h, LcdWidth / 2
+	mlt	hl
+	add	hl, hl
+	ld	de, (_TextX)
+	add	hl, de
+	ld	iy, (mpLcdLpbase)
+	ex	de, hl
+	add	iy, de
+	lea	hl, iy + 0
+	; First column
+	ld	a, (_TextStraightBackgroundColor)
+	ld	de, LcdWidth
+.loop1:
+	ld	(hl), a
+	add	hl, de
+	djnz	.loop1
+	ld	a, ixl
+	or	ixh
+	jr	z, .exit
+	ld	a, c
+.loop2:
+	lea	bc, ix + 0
+	lea	de, iy + 1
+	lea	hl, iy + 0
+	ldir
+	ld	de, LcdWidth
+	add	iy, de
+	dec	a
+	jr	nz, .loop2
+.exit:
+	pop	ix
+	ret
+
+
+;-------------------------------------------------------------------------------
 ;CCallback:
 ; Internal routine for calling a callback written in C.
 ; Detects if the callback is NULL, and returns NC if so.
@@ -1325,9 +1484,9 @@ textY := _TextY - DataBaseAddr
 _TextTransparentMode:
 textTransparentMode := _TextTransparentMode - DataBaseAddr
 	db	0
-_TextNoNewLines:
-textNoNewLines := _TextNoNewLines - DataBaseAddr
-	db	0
+_TextNewlineControl:
+newlineControl := _TextNewlineControl - DataBaseAddr
+	db	mEnableAutoWrap or mAutoClearToEOL
 _TextLastCharacterRead:
 strReadPtr := _TextLastCharacterRead - DataBaseAddr
 	dl	0

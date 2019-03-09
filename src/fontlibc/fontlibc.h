@@ -14,6 +14,10 @@
 extern "C" {
 #endif
 
+#define FONTLIB_ENABLE_AUTO_WRAP 1
+#define FONTLIB_AUTO_CLEAR_TO_EOL 2
+#define FONTLIB_PRECLEAR_NEWLINE 4
+
 typedef enum {
 	/* clear = sans-serif font */
 	SERIF = 0x01,
@@ -113,7 +117,6 @@ void fontlib_SetWindow(int x_min, uint8_t y_min, int width, uint8_t height);
  * @param height  Pointer to variable to store height into
  */
 void fontlib_GetWindow(int* x_min, uint8_t* y_min, int* width, uint8_t* height);
-
 
 /**
  * Sets the cursor position
@@ -375,6 +378,40 @@ void fontlib_DrawString(char* str);
  * return early if some other condition requires returning
  */
 void fontlib_DrawStringL(char* str, int24_t max_characters);
+
+/**
+ * Erases everything from the cursor to the right side of the text window
+ * (End-Of-Line).  This ignores the transparent background flag.
+ */
+void fontlib_ClearEOL(void);
+
+/**
+ * Erases the entire current text window.  This ignores the transparent
+ * background flag.
+ */
+void fontlib_ClearWindow(void);
+
+/**
+ * Performs a newline.  Pays attention to newline flags.
+ */
+void fontlib_Newline(void);
+
+/**
+ * Sets options for controlling newline behavior
+ * @param options Flags setting newline behavior:
+ * FONTLIB_ENABLE_AUTO_WRAP: Enables automatic wrapping at the end of the line
+ * (this is per-glyph, not word-wrap);
+ * FONTLIB_AUTO_CLEAR_TO_EOL: Clears the remainder of the line of text;
+ * FONTLIB_PRECLEAR_NEWLINE: Clears the NEXT line of text, don't combine this
+ * with AUTO_CLEAR because that just wastes CPU cycles.
+ */
+void fontlib_SetNewlineOptions(uint8_t options);
+
+/**
+ * Gets the current newline behavior options.
+ * @return Current newline behavior options
+ */
+uint8_t fontlib_GetNewlineOptions(void);
 
 
 #ifdef __cplusplus
