@@ -15,6 +15,4 @@ together and tagging with metadata.
 
 
 ## TODO
-* NewLine
-* ClearEOL
-* SetNewlineOptions
+* Add font selection routines
