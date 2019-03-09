@@ -127,11 +127,13 @@ void fontlib_SetCursorPosition(int x, uint8_t y);
 
 /**
  * Returns the cursor column.
+ * @return Current cursor X
  */
 int fontlib_GetCursorX(void);
 
 /**
  * Returns the cursor row.
+ * @return Current cursor Y
  */
 uint8_t fontlib_GetCursorY(void);
 

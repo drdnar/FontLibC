@@ -623,7 +623,8 @@ fontlib_DrawString:
 ;  - arg0: Pointer to string
 ;  - arg1: Maximum number of characters have been printed
 ; Outputs:
-;  - Stuff printed	pop	bc
+;  - Stuff printed
+	pop	bc
 	ld	(.retter + 1), bc
 	pop	de
 	scf
@@ -1147,7 +1148,7 @@ fontlib_GetStringWidth:
 	sbc	hl, hl
 	push	hl
 	push	de
-	call	fontlib_DrawStringL
+	call	fontlib_GetStringWidthL
 	pop	de
 .retter:
 	jp	0
@@ -1228,6 +1229,7 @@ fontlib_GetStringWidthL:
 .exit:
 	ld	a, (ix + fontStruct.italicSpaceAdjust)
 	neg
+	jr	z, .exitFast
 	ld	de, -1
 	ld	e, a
 	add	iy, de
