@@ -493,20 +493,32 @@ DrawGlyphRawKnownWidth:
 	lea.sis	ix, ix + 0	; Truncate to 16-bits
 	ld	bc, (_CurrentFontRoot)
 	add	ix, bc
+	; Write SMC
+	ld	a, (_TextTransparentMode)
+	ld	b, a
+	ld	a, .unsetColumnLoopStart - (.unsetColumnLoopJr1 + 2)
+	ld	c, .unsetColumnLoopStart - (.unsetColumnLoopJr2 + 2)
+	djnz	.writeSmc
+	ld	a, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopJr1 + 2)
+	ld	c, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopJr2 + 2)
+.writeSmc:
+	ld	(.unsetColumnLoopJr1 + 1), a
+	ld	a, c
+	ld	(.unsetColumnLoopJr2 + 1), a
+	push	bc
 	; Now deal with the spaceAbove metric
-	ex	de, hl
-	ld	a, (_TextTransparentMode)
-	ld	c, a
 	ld	a, (_CurrentFontProperties.spaceAbove)
-	call	DrawEmptyLines
-	ld	a, (_TextTransparentMode)
-	ld	c, a
+	or	a, a
+	call	nz, DrawEmptyLines
+	ld	c, 255			; SMCd to have correct foreground color
+smcByte _TextStraightForegroundColor
 	ld	a, (_CurrentFontProperties.height)
 	ld	iyh, a
-	ex	de, hl
+	ld	a, c
+
 ; Registers:
 ;  - B: Bit counter for each row
-;  - C: Transparent flag
+;  - C: Foreground color
 ;  - IYL: Glyph data width
 ;  - IYH: Row counter
 ;  - IX: Read pointer
@@ -522,35 +534,45 @@ DrawGlyphRawKnownWidth:
 	lea	ix, ix + 0		; SMCd to have correct byte count per row
 smcByte _TextStraightBytesPerRow
 	ld	b, iyl
-	ld	a, 255
-smcByte _TextInitialForegroundColor
-	; For set pixels
+.columnLoopStart:
+	add	hl, hl
+.unsetColumnLoopJr1:
+	jr	nc, .unsetColumnLoopStart
+
+; For set pixels
+.setColumnLoopStart:
+	ld	a, c
+	ld	(de), a
+	inc	de
+	dec	b
+	jr	z, .columnLoopEnd
 .setColumnLoop:
 	add	hl, hl
+.unsetColumnLoopJr2:
 	jr	nc, .unsetColumnLoopStart
 .setColumnLoopMiddle:
 	ld	(de), a
 	inc	de
 	djnz	.setColumnLoop
 	jr	.columnLoopEnd
-.setColumnLoopStart:
-	ld	a, 255			; SMCd to have correct foreground color
-smcByte _TextStraightForegroundColor
-	jr	.setColumnLoopMiddle
-	; For unset pixels, we use a special loop if transparency is requested
-.unsetColumnLoopStart:
-	ld	a, 0			; SMCd to have correct background color
-smcByte _TextStraightBackgroundColor
-	bit	0, c
-	jr	z, .unsetColumnLoopMiddle
-	inc	de
+
+; For unset pixels, we use a special loop if transparency is requested
 .unsetColumnLoopTransparent:
 	add	hl, hl
-	jr	c, .setColumnLoopStart
+	jr	c, .setColumnLoopMiddle
+.unsetColumnLoopMiddleTransparent:
 	inc	de
 	djnz	.unsetColumnLoopTransparent
 	jr	.columnLoopEnd
-	; For unset pixels with opacity on
+
+; For unset pixels with opacity on
+.unsetColumnLoopStart:
+	ld	a, 0			; SMCd to have correct background color
+smcByte _TextStraightBackgroundColor
+	ld	(de), a
+	inc	de
+	dec	b
+	jr	z, .columnLoopEnd
 .unsetColumnLoop:
 	add	hl, hl
 	jr	c, .setColumnLoopStart
@@ -558,59 +580,60 @@ smcByte _TextStraightBackgroundColor
 	ld	(de), a
 	inc	de
 	djnz	.unsetColumnLoop
+
 .columnLoopEnd:
-	ex	de, hl
-	ld	de, LcdWidth - 0	; SMCd to have correct row delta
+	ld	hl, LcdWidth - 0	; SMCd to have correct row delta
 smcByte _TextStraightRowDelta
 	add	hl, de
 	ex	de, hl
 	dec	iyh
 	jr	nz, .rowLoop
+
 ; OK done with the main work!
 	; Now deal with the spaceBelow metric
+	pop	bc
 	ld	a, (_CurrentFontProperties.spaceBelow)
-	ex	de, hl
+	or	a, a
+	ret	z
+
 DrawEmptyLines:
 ; Internal routine that draws empty space for a glyph
 ; Inputs:
-;  - A: Number of lines to draw
-;  - C: Transparent flag
+;  - A: Number of lines to draw (nonzero)
+;  - B: -1 = opaque, 0 = transparent
 ;  - IYL: Width of line to draw
-;  - HL: Drawing target
+;  - DE: Drawing target
 ;  - (_TextStraightRowDelta - 2): Row delta
 ; Output:
 ;  - Lines drawn
 ; Destroys:
 ;  - AF
 ;  - BC
-;  - DE
-;  - IYH = 0
-	or	a
-	ret	z
-	bit	0, c
+;  - HL
+	ex	de, hl
+	ld	c, a
+	inc	b
 	jr	nz, .transparentLines
 	; Deal with clearing out pixels
-	ld	iyh, a
 	ld	a, (_TextStraightBackgroundColor)
 	ld	de, (_TextStraightRowDelta - 2)
-	ld	c, iyl
 .clearLinesLoop:
-	ld	b, c
+	ld	b, iyl
 .clearLinesInnerLoop:
 	ld	(hl), a
 	inc	hl
 	djnz	.clearLinesInnerLoop
 	add	hl, de
-	dec	iyh
+	dec	c
 	jr	nz, .clearLinesLoop
+	ex	de, hl
 	ret
 .transparentLines:
-	ld	e, a
-	ld	d, LcdWidth / 2
-	mlt	de
+	ld	b, LcdWidth / 2
+	mlt	bc
+	add	hl, bc
+	add	hl, bc
 	ex	de, hl
-	add	hl, hl
-	add	hl, de
 	ret
 
 
@@ -787,7 +810,6 @@ fontlib_SetForegroundColor:
 	add	hl, sp
 	ld	a, (hl)
 	ld	(_TextStraightForegroundColor), a
-	ld	(_TextInitialForegroundColor), a
 	ret
 
 
@@ -817,7 +839,6 @@ fontlib_SetColors:
 	add	iy, sp
 	ld	a, (iy + arg0)
 	ld	(_TextStraightForegroundColor), a
-	ld	(_TextInitialForegroundColor), a
 	ld	a, (iy + arg1)
 	ld	(_TextStraightBackgroundColor), a
 	ret
@@ -855,8 +876,9 @@ fontlib_SetTransparency:
 	ld	hl, arg0
 	add	hl, sp
 	ld	a, (hl)
-	add	a, 255	; Set carry if A > 0
-	sbc	a, a	; Set all bits to value of carry
+	sub	a, 1	; Set carry if A = 0
+	sbc	a, a	; 0 => -1, else => 0
+	inc	a	; 0 => 0, else => 1
 	ld	(_TextTransparentMode), a
 	ret
 
@@ -869,7 +891,6 @@ fontlib_GetTransparency:
 ; Returns:
 ;  - 1 if transparent, 0 if opaque
 	ld	a, (_TextTransparentMode)
-	and	1
 	ret
 
 
