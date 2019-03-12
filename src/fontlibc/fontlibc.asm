@@ -498,13 +498,14 @@ DrawGlyphRawKnownWidth:
 	ld	b, a
 	ld	a, .unsetColumnLoopStart - (.unsetColumnLoopStartJr1 + 2)
 	ld	c, .unsetColumnLoopStart - (.unsetColumnLoopStartJr2 + 2)
-	jr	z, .writeSmc
+	djnz	.writeSmc
 	ld	a, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopStartJr1 + 2)
 	ld	c, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopStartJr2 + 2)
 .writeSmc:
 	ld	(.unsetColumnLoopStartJr1 + 1), a
 	ld	a, c
 	ld	(.unsetColumnLoopStartJr2 + 1), a
+	push	bc
 	; Now deal with the spaceAbove metric
 	ld	a, (_CurrentFontProperties.spaceAbove)
 	or	a, a
@@ -576,17 +577,19 @@ smcByte _TextStraightBackgroundColor
 	djnz	.unsetColumnLoop
 
 .columnLoopEnd:
-	ex	de, hl
-	ld	de, LcdWidth - 0	; SMCd to have correct row delta
+	ld	hl, LcdWidth - 0	; SMCd to have correct row delta
 smcByte _TextStraightRowDelta
 	add	hl, de
 	ex	de, hl
 	dec	iyh
 	jr	nz, .rowLoop
+
 ; OK done with the main work!
 	; Now deal with the spaceBelow metric
+	pop	bc
 	ld	a, (_CurrentFontProperties.spaceBelow)
-	ex	de, hl
+	or	a, a
+	ret
 
 DrawEmptyLines:
 ; Internal routine that draws empty space for a glyph
