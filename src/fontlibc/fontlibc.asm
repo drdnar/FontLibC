@@ -597,15 +597,14 @@ DrawEmptyLines:
 ;  - A: Number of lines to draw (nonzero)
 ;  - B: -1 = opaque, 0 = transparent
 ;  - IYL: Width of line to draw
-;  - HL: Drawing target
+;  - DE: Drawing target
 ;  - (_TextStraightRowDelta - 2): Row delta
 ; Output:
 ;  - Lines drawn
 ; Destroys:
 ;  - AF
 ;  - BC
-;  - DE
-;  - IYH = 0
+;  - HL
 	ex	de, hl
 	ld	c, a
 	inc	b
