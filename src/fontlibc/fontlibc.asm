@@ -568,6 +568,10 @@ smcByte _TextStraightBytesPerRow
 .unsetColumnLoopStart:
 	ld	a, 0			; SMCd to have correct background color
 smcByte _TextStraightBackgroundColor
+	ld	(de), a
+	inc	de
+	dec	b
+	jr	z, .columnLoopEnd
 .unsetColumnLoop:
 	add	hl, hl
 	jr	c, .setColumnLoopStart
