@@ -543,8 +543,8 @@ smcByte _TextStraightBytesPerRow
 	ld	a, c
 	ld	(de), a
 	inc	de
-	djnz	.setColumnLoop
-	jr	.columnLoopEnd
+	dec	b
+	jr	z, .columnLoopEnd
 .setColumnLoop:
 	add	hl, hl
 .unsetColumnLoopStartJr2:
