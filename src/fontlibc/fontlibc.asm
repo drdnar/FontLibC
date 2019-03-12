@@ -498,13 +498,14 @@ DrawGlyphRawKnownWidth:
 	ld	b, a
 	ld	a, .unsetColumnLoopStart - (.unsetColumnLoopStartJr1 + 2)
 	ld	c, .unsetColumnLoopStart - (.unsetColumnLoopStartJr2 + 2)
-	jr	z, .writeSmc
+	djnz	.writeSmc
 	ld	a, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopStartJr1 + 2)
 	ld	c, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopStartJr2 + 2)
 .writeSmc:
 	ld	(.unsetColumnLoopStartJr1 + 1), a
 	ld	a, c
 	ld	(.unsetColumnLoopStartJr2 + 1), a
+	push	bc
 	; Now deal with the spaceAbove metric
 	ld	a, (_CurrentFontProperties.spaceAbove)
 	or	a, a
@@ -542,8 +543,8 @@ smcByte _TextStraightBytesPerRow
 	ld	a, c
 	ld	(de), a
 	inc	de
-	djnz	.setColumnLoop
-	jr	.columnLoopEnd
+	dec	b
+	jr	z, .columnLoopEnd
 .setColumnLoop:
 	add	hl, hl
 .unsetColumnLoopStartJr2:
@@ -576,17 +577,19 @@ smcByte _TextStraightBackgroundColor
 	djnz	.unsetColumnLoop
 
 .columnLoopEnd:
-	ex	de, hl
-	ld	de, LcdWidth - 0	; SMCd to have correct row delta
+	ld	hl, LcdWidth - 0	; SMCd to have correct row delta
 smcByte _TextStraightRowDelta
 	add	hl, de
 	ex	de, hl
 	dec	iyh
 	jr	nz, .rowLoop
+
 ; OK done with the main work!
 	; Now deal with the spaceBelow metric
+	pop	bc
 	ld	a, (_CurrentFontProperties.spaceBelow)
-	ex	de, hl
+	or	a, a
+	ret	z
 
 DrawEmptyLines:
 ; Internal routine that draws empty space for a glyph
@@ -594,15 +597,14 @@ DrawEmptyLines:
 ;  - A: Number of lines to draw (nonzero)
 ;  - B: -1 = opaque, 0 = transparent
 ;  - IYL: Width of line to draw
-;  - HL: Drawing target
+;  - DE: Drawing target
 ;  - (_TextStraightRowDelta - 2): Row delta
 ; Output:
 ;  - Lines drawn
 ; Destroys:
 ;  - AF
 ;  - BC
-;  - DE
-;  - IYH = 0
+;  - HL
 	ex	de, hl
 	ld	c, a
 	inc	b
@@ -803,6 +805,7 @@ fontlib_SetForegroundColor:
 	add	hl, sp
 	ld	a, (hl)
 	ld	(_TextStraightForegroundColor), a
+	ld	(_TextInitialForegroundColor), a
 	ret
 
 
@@ -832,6 +835,7 @@ fontlib_SetColors:
 	add	iy, sp
 	ld	a, (iy + arg0)
 	ld	(_TextStraightForegroundColor), a
+	ld	(_TextInitialForegroundColor), a
 	ld	a, (iy + arg1)
 	ld	(_TextStraightBackgroundColor), a
 	ret
@@ -1010,7 +1014,7 @@ fontlib_GetTotalGlyphs:
 	ld	a, (_CurrentFontProperties.totalGlyphs)
 	ld	l, a
 	or	a
-	ret	z
+	ret	nz
 	inc	h
 	ret
 

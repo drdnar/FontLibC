@@ -62,7 +62,7 @@ void main(void) {
     
     printCentered(website, artwiz_snap_20, 2, 2, 10);
     
-    fontlib_SetCursorPosition(0, 150);
+    fontlib_SetCursorPosition(0, 160);
     printCentered(hashtag1, artwiz_snap_10, 2, 2, 0);
     printCentered(hashtag2, artwiz_snap_10, 2, 2, 0);
     
