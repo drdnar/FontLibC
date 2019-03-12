@@ -805,7 +805,6 @@ fontlib_SetForegroundColor:
 	add	hl, sp
 	ld	a, (hl)
 	ld	(_TextStraightForegroundColor), a
-	ld	(_TextInitialForegroundColor), a
 	ret
 
 
@@ -835,7 +834,6 @@ fontlib_SetColors:
 	add	iy, sp
 	ld	a, (iy + arg0)
 	ld	(_TextStraightForegroundColor), a
-	ld	(_TextInitialForegroundColor), a
 	ld	a, (iy + arg1)
 	ld	(_TextStraightBackgroundColor), a
 	ret
