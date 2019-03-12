@@ -506,11 +506,9 @@ DrawGlyphRawKnownWidth:
 	ld	a, c
 	ld	(.unsetColumnLoopStartJr2 + 1), a
 	; Now deal with the spaceAbove metric
-	ex	de, hl
 	ld	a, (_CurrentFontProperties.spaceAbove)
 	or	a, a
 	call	nz, DrawEmptyLines
-	ex	de, hl
 	ld	c, 255			; SMCd to have correct foreground color
 smcByte _TextStraightForegroundColor
 	ld	a, (_CurrentFontProperties.height)
@@ -605,6 +603,7 @@ DrawEmptyLines:
 ;  - BC
 ;  - DE
 ;  - IYH = 0
+	ex	de, hl
 	ld	c, a
 	inc	b
 	jr	nz, .transparentLines
@@ -620,12 +619,14 @@ DrawEmptyLines:
 	add	hl, de
 	dec	c
 	jr	nz, .clearLinesLoop
+	ex	de, hl
 	ret
 .transparentLines:
 	ld	b, LcdWidth / 2
 	mlt	bc
 	add	hl, bc
 	add	hl, bc
+	ex	de, hl
 	ret
 
 
