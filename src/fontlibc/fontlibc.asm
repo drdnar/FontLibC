@@ -522,8 +522,8 @@ DrawGlyphRawKnownWidth:
 	lea	ix, ix + 0		; SMCd to have correct byte count per row
 smcByte _TextStraightBytesPerRow
 	ld	b, iyl
-.columnLoopStart:
-	ld	a, (_TextStraightForegroundColor)
+	ld	a, 255
+smcByte _TextInitialForegroundColor
 	; For set pixels
 .setColumnLoop:
 	add	hl, hl
@@ -787,6 +787,7 @@ fontlib_SetForegroundColor:
 	add	hl, sp
 	ld	a, (hl)
 	ld	(_TextStraightForegroundColor), a
+	ld	(_TextInitialForegroundColor), a
 	ret
 
 
@@ -816,6 +817,7 @@ fontlib_SetColors:
 	add	iy, sp
 	ld	a, (iy + arg0)
 	ld	(_TextStraightForegroundColor), a
+	ld	(_TextInitialForegroundColor), a
 	ld	a, (iy + arg1)
 	ld	(_TextStraightBackgroundColor), a
 	ret
@@ -994,7 +996,7 @@ fontlib_GetTotalGlyphs:
 	ld	a, (_CurrentFontProperties.totalGlyphs)
 	ld	l, a
 	or	a
-	ret	z
+	ret	nz
 	inc	h
 	ret
 
