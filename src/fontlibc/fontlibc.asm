@@ -876,7 +876,7 @@ fontlib_SetTransparency:
 	ld	hl, arg0
 	add	hl, sp
 	ld	a, (hl)
-	add	a, -1	; Set carry if A = 0
+	sub	a, 1	; Set carry if A = 0
 	sbc	a, a	; 0 => -1, else => 0
 	inc	a	; 0 => 0, else => 1
 	ld	(_TextTransparentMode), a
