@@ -589,7 +589,7 @@ smcByte _TextStraightRowDelta
 	pop	bc
 	ld	a, (_CurrentFontProperties.spaceBelow)
 	or	a, a
-	ret
+	ret	z
 
 DrawEmptyLines:
 ; Internal routine that draws empty space for a glyph
