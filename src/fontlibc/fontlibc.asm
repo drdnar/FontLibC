@@ -496,15 +496,15 @@ DrawGlyphRawKnownWidth:
 	; Write SMC
 	ld	a, (_TextTransparentMode)
 	ld	b, a
-	ld	a, .unsetColumnLoopStart - (.unsetColumnLoopStartJr1 + 2)
-	ld	c, .unsetColumnLoopStart - (.unsetColumnLoopStartJr2 + 2)
+	ld	a, .unsetColumnLoopStart - (.unsetColumnLoopJr1 + 2)
+	ld	c, .unsetColumnLoopStart - (.unsetColumnLoopJr2 + 2)
 	djnz	.writeSmc
-	ld	a, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopStartJr1 + 2)
-	ld	c, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopStartJr2 + 2)
+	ld	a, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopJr1 + 2)
+	ld	c, .unsetColumnLoopMiddleTransparent - (.unsetColumnLoopJr2 + 2)
 .writeSmc:
-	ld	(.unsetColumnLoopStartJr1 + 1), a
+	ld	(.unsetColumnLoopJr1 + 1), a
 	ld	a, c
-	ld	(.unsetColumnLoopStartJr2 + 1), a
+	ld	(.unsetColumnLoopJr2 + 1), a
 	push	bc
 	; Now deal with the spaceAbove metric
 	ld	a, (_CurrentFontProperties.spaceAbove)
@@ -514,6 +514,7 @@ DrawGlyphRawKnownWidth:
 smcByte _TextStraightForegroundColor
 	ld	a, (_CurrentFontProperties.height)
 	ld	iyh, a
+	ld	a, c
 
 ; Registers:
 ;  - B: Bit counter for each row
@@ -535,7 +536,7 @@ smcByte _TextStraightBytesPerRow
 	ld	b, iyl
 .columnLoopStart:
 	add	hl, hl
-.unsetColumnLoopStartJr1:
+.unsetColumnLoopJr1:
 	jr	nc, .unsetColumnLoopStart
 
 ; For set pixels
@@ -547,7 +548,7 @@ smcByte _TextStraightBytesPerRow
 	jr	z, .columnLoopEnd
 .setColumnLoop:
 	add	hl, hl
-.unsetColumnLoopStartJr2:
+.unsetColumnLoopJr2:
 	jr	nc, .unsetColumnLoopStart
 .setColumnLoopMiddle:
 	ld	(de), a
@@ -875,8 +876,9 @@ fontlib_SetTransparency:
 	ld	hl, arg0
 	add	hl, sp
 	ld	a, (hl)
-	add	a, 255	; Set carry if A > 0
-	sbc	a, a	; Set all bits to value of carry
+	add	a, 1	; Set carry if A = 0
+	sbc	a, a	; 0 => -1, else => 0
+	inc	a	; 0 => 0, else => 1
 	ld	(_TextTransparentMode), a
 	ret
 
@@ -889,7 +891,6 @@ fontlib_GetTransparency:
 ; Returns:
 ;  - 1 if transparent, 0 if opaque
 	ld	a, (_TextTransparentMode)
-	and	1
 	ret
 
 
