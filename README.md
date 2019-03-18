@@ -1,4 +1,7 @@
 # FontLibC
+## has been incorporated into https://github.com/CE-Programming/toolchain
+
+Beta builds of FontLibC may still be found here, however.
 
 FontLibC is a library providing better text support for C programs on eZ80
 TI graphing calculators.
