@@ -13,9 +13,3 @@ italic/oblique text by not fully advancing the cursor.
 GRAPHX functions, nor use GRAPHX's text cursor or colors.
 * It has a native on-calculator format that supports packaging multiple fonts
 together and tagging with metadata.
-
-
-
-
-## TODO
-* Add font selection routines
